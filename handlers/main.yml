@@ -1,0 +1,14 @@
+---
+- name: "Reload Kea Control Agent"
+  community.docker.docker_container:
+    name: "{{ kea_ctrl_agent_container_name }}"
+    state: started
+    restart: true
+  when: kea_ctrl_agent_enabled
+
+- name: Reload Kea DDNS Container
+  community.docker.docker_container:
+    name: "{{ kea_ddns_container_name }}"
+    state: started
+    restart: true
+  when: kea_ddns_enabled

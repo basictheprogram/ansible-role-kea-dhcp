@@ -1,0 +1,9 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Assert molecule framework is operational
+      ansible.builtin.assert:
+        that: true
+        success_msg: "Molecule verify passed — framework is operational"

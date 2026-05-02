@@ -1,0 +1,33 @@
+NOTICE
+======
+
+ansible-role-kea-dhcp
+Copyright (C) 2026  Bob Tanner <tanner@real-time.com>
+
+This project installs and configures ISC Kea v3 DHCP natively via apt packages
+on Ubuntu Resolute (26.04 LTS). It is the second fork by the same author:
+
+  ansible-role-kea-dhcp-docker Bob Tanner <tanner@real-time.com>
+  https://github.com/basictheprogram/ansible-role-kea-dhcp-docker
+
+  A Docker-based Ansible role for Kea DHCP, also authored by Bob Tanner,
+  which adapted the original project for containerized deployment.
+
+Neither fork is intended to be merged back into the upstream project.
+
+-------------------------------------------------------------------------------
+
+This work is based on:
+
+  ansible-role-kea_dhcp
+  Copyright (C) Jonas Alfredsson
+  https://github.com/JonasAlfredsson/ansible-role-kea_dhcp
+
+  The original Ansible role for deploying Kea DHCP, including the Jinja2
+  configuration templates that form the backbone of all three projects.
+  Without this foundational work none of this would exist.
+
+-------------------------------------------------------------------------------
+
+All projects are licensed under the GNU General Public License v3.0 or later.
+See the LICENSE file in this repository for the full license text.

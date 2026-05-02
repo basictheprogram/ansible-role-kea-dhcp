@@ -1,0 +1,21 @@
+---
+dependencies: []
+
+galaxy_info:
+  namespace: realtime
+  role_name: kea_dhcp
+  author: "Bob Tanner"
+  company: "Real Time Enterprises, Inc."
+  description: "Install and configure ISC Kea v3 DHCP natively via apt packages on Ubuntu Resolute (26.04 LTS)."
+  license: "GPL-3.0-or-later"
+  min_ansible_version: "2.20"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - resolute # 26.04
+  galaxy_tags:
+    - kea
+    - dhcp
+    - isc
+    - network
+    - ubuntu

@@ -1,0 +1,42 @@
+---
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: ["--unsafe"]
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+      - id: check-added-large-files
+        args: ["--maxkb=600"]
+      - id: detect-private-key
+      - id: check-symlinks
+      - id: file-contents-sorter
+        files: \.gitignore$
+
+  - repo: https://github.com/adrienverge/yamllint.git
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        files: \.(yaml|yml)$
+        types: [file, yaml]
+        entry: yamllint --strict -f parsable
+
+  - repo: https://github.com/zricethezav/gitleaks
+    rev: v8.30.0
+    hooks:
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: ansible-lint
+        name: Ansible Lint
+        language: system
+        entry: ansible-lint
+        files: \.(yaml|yml)$
+        pass_filenames: false

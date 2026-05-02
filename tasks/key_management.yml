@@ -1,0 +1,24 @@
+---
+- name: Find BIND9 tsig key files
+  ansible.builtin.find:
+    paths: /etc/bind
+    patterns: "*.key"
+    file_type: file
+  register: bind_keys
+
+- name: Read key files
+  ansible.builtin.slurp:
+    src: "{{ item.path }}"
+  loop: "{{ bind_keys.files }}"
+  register: raw_keys
+  when: bind_keys.matched > 0
+
+- name: Write BIND key files as Kea secrets
+  ansible.builtin.copy:
+    dest: "{{ kea_container_base_dir }}/config/{{ item.item.path | basename }}"
+    content: "{{ item.content | b64decode | regex_replace('(?s)^.*secret\\s+\"([^\"]+)\".*$', '\\1') }}"
+    mode: "0640"
+    owner: "root"
+    group: "101"
+  loop: "{{ raw_keys.results }}"
+  when: bind_keys.matched > 0

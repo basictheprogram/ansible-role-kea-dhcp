@@ -1,0 +1,48 @@
+---
+- name: Create Kea DDNS Docker network
+  community.docker.docker_network:
+    name: "{{ item.name }}"
+  loop: "{{ kea_ddns_container_networks | default([]) }}"
+  when: item.name | default('') | length > 0
+
+- name: Deploy the Kea DDNS service
+  when: kea_ddns_enabled
+  block:
+    - name: Copy DDNS configuration files
+      ansible.builtin.template:
+        src: "{{ item }}"
+        dest: "{{ kea_container_base_dir }}/config/{{ item | regex_replace('.j2', '') }}"
+        owner: "root"
+        group: "101"
+        mode: "0664"
+      loop:
+        - "ddns.json.j2"
+      notify: Reload Kea DDNS Container
+
+    - name: Pull Kea DDNS image
+      community.docker.docker_image:
+        name: "{{ kea_ddns_container_image }}"
+        source: pull
+        force_source: false
+      register: kea_ddns_image_pull
+      retries: 3
+      delay: 15
+      until: kea_ddns_image_pull is not failed
+
+    - name: Start Kea DDNS container
+      community.docker.docker_container:
+        name: "{{ kea_ddns_container_name }}"
+        image: "{{ kea_ddns_container_image }}"
+        pull: missing
+        state: started
+        restart_policy: unless-stopped
+        command: "{{ kea_ddns_container_command }}"
+        volumes:
+          - "{{ kea_container_base_dir }}/config:/kea/config:ro"
+          - "{{ kea_container_base_dir }}/sockets:/kea/sockets"
+          - "{{ kea_container_base_dir }}/logs:/kea/logs"
+        comparisons:
+          networks: strict
+        network_mode: "{{ kea_ddns_container_use_host_network | bool | ternary('host', omit) }}"
+        networks: "{{ kea_ddns_container_use_host_network | bool | ternary(omit, kea_ddns_container_networks) }}"
+        published_ports: "{{ kea_ddns_container_use_host_network | bool | ternary(omit, kea_ddns_container_ports) }}"

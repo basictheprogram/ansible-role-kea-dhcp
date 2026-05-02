@@ -1,0 +1,16 @@
+---
+exclude_paths:
+  - .cache/
+  - .github/
+  - .ansible/
+  - .pre-commit-config.yaml
+  - molecule/
+
+skip_list:
+  - var-naming
+  - git-latest
+
+enable_list:
+  - fqcn
+
+use_default_rules: true
