@@ -1,8 +1,10 @@
 # ansible-role-kea-dhcp
 
 [![CI](https://github.com/basictheprogram/ansible-role-kea-dhcp/actions/workflows/ci.yml/badge.svg)](https://github.com/basictheprogram/ansible-role-kea-dhcp/actions/workflows/ci.yml)
+[![Ansible Lint](https://github.com/basictheprogram/ansible-role-kea-dhcp/actions/workflows/ansible-lint.yml/badge.svg)](https://github.com/basictheprogram/ansible-role-kea-dhcp/actions/workflows/ansible-lint.yml)
 [![Ansible Galaxy](https://img.shields.io/badge/ansible--galaxy-kea__dhcp-blue.svg?style=popout-square)](https://galaxy.ansible.com/realtime/kea_dhcp)
 [![Ansible Role](https://img.shields.io/ansible/role/d/realtime/kea_dhcp.svg?style=popout-square)](https://galaxy.ansible.com/realtime/kea_dhcp)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](./LICENSE)
 
 An Ansible role that installs and configures [ISC Kea v3][kea-docs] DHCP
 natively via `apt` packages on **Ubuntu Resolute (26.04 LTS)**. No Docker
@@ -348,7 +350,9 @@ See the [NOTICE](./NOTICE) file for full attribution details.
 
 GNU General Public License v3.0 or later — see [LICENSE](./LICENSE).
 
-Copyright (C) 2026  Bob Tanner \<tanner@real-time.com\>
+## Author
+
+Copyright (C) 2026  Bob Tanner
 
 
 
