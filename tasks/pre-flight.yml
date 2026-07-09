@@ -1,0 +1,466 @@
+---
+# Pre-flight checks for ansible-role-kea-dhcp.
+#
+# Validates platform, Ansible version, and every role variable before any
+# package installation or configuration is attempted.  All assertions use
+# fail_msg so the operator knows exactly which variable failed and why.
+#
+# Included first from tasks/main.yml via ansible.builtin.include_tasks.
+
+# ---------------------------------------------------------------------------
+# Platform and toolchain
+# ---------------------------------------------------------------------------
+
+- name: Pre-flight | assert Ubuntu Resolute (26.04 LTS)
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - ansible_facts['distribution'] == "Ubuntu"
+      - ansible_facts['distribution_version'] == "26.04"
+    fail_msg: >-
+      This role requires Ubuntu Resolute (26.04 LTS).
+      Detected: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}.
+    success_msg: >-
+      Platform OK: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}
+
+- name: Pre-flight | assert Ansible Core >= 2.20
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - ansible_version.full is version("2.20", ">=")
+    fail_msg: >-
+      This role requires Ansible Core 2.20 or later.
+      Detected: {{ ansible_version.full }}.
+    success_msg: "Ansible version OK: {{ ansible_version.full }}"
+
+# ---------------------------------------------------------------------------
+# Service flags
+# ---------------------------------------------------------------------------
+
+- name: Pre-flight | assert at least one Kea service is enabled
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_dhcp4_enabled or kea_dhcp6_enabled or kea_ctrl_agent_enabled or kea_ddns_enabled
+    fail_msg: >-
+      At least one Kea service must be enabled.  Set one of
+      kea_dhcp4_enabled, kea_dhcp6_enabled, kea_ctrl_agent_enabled, or
+      kea_ddns_enabled to true.
+
+# ---------------------------------------------------------------------------
+# Base directory
+# ---------------------------------------------------------------------------
+
+- name: Pre-flight | assert kea_base_dir is an absolute path
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_base_dir is defined
+      - kea_base_dir | length > 0
+      - kea_base_dir.startswith('/')
+    fail_msg: >-
+      kea_base_dir must be a non-empty absolute path.
+      Got: {{ kea_base_dir | default('undefined') }}.
+
+# ---------------------------------------------------------------------------
+# Interface variables
+# ---------------------------------------------------------------------------
+
+- name: Pre-flight | assert kea_dhcp4_interfaces is a non-empty list
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_dhcp4_interfaces is sequence
+      - kea_dhcp4_interfaces is not string
+      - kea_dhcp4_interfaces | length > 0
+    fail_msg: >-
+      kea_dhcp4_interfaces must be a non-empty list (e.g. ["eth0"] or ["*"]).
+      Got: {{ kea_dhcp4_interfaces }}.
+  when: kea_dhcp4_enabled | bool
+
+- name: Pre-flight | assert kea_dhcp6_interfaces is a non-empty list
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_dhcp6_interfaces is sequence
+      - kea_dhcp6_interfaces is not string
+      - kea_dhcp6_interfaces | length > 0
+    fail_msg: >-
+      kea_dhcp6_interfaces must be a non-empty list (e.g. ["eth0"] or ["*"]).
+      Got: {{ kea_dhcp6_interfaces }}.
+  when: kea_dhcp6_enabled | bool
+
+# ---------------------------------------------------------------------------
+# Lease timers — DHCPv4
+# ---------------------------------------------------------------------------
+
+- name: Pre-flight | assert DHCPv4 timer values are valid
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_dhcp4_valid_lifetime | int > 0
+      - kea_dhcp4_renew_timer | int > 0
+      - kea_dhcp4_rebind_timer | int > 0
+      - kea_dhcp4_renew_timer | int < kea_dhcp4_rebind_timer | int
+      - kea_dhcp4_rebind_timer | int < kea_dhcp4_valid_lifetime | int
+    fail_msg: >-
+      DHCPv4 timer constraint violated.
+      Require: renew_timer < rebind_timer < valid_lifetime, all > 0.
+      Got: valid_lifetime={{ kea_dhcp4_valid_lifetime }},
+      renew_timer={{ kea_dhcp4_renew_timer }},
+      rebind_timer={{ kea_dhcp4_rebind_timer }}.
+  when: kea_dhcp4_enabled | bool
+
+- name: Pre-flight | assert kea_dhcp4_parked_packet_limit >= 1
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_dhcp4_parked_packet_limit | int >= 1
+    fail_msg: >-
+      kea_dhcp4_parked_packet_limit must be >= 1.
+      Got: {{ kea_dhcp4_parked_packet_limit }}.
+  when: kea_dhcp4_enabled | bool
+
+# ---------------------------------------------------------------------------
+# Lease timers — DHCPv6
+# ---------------------------------------------------------------------------
+
+- name: Pre-flight | assert DHCPv6 timer values are valid
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_dhcp6_valid_lifetime | int > 0
+      - kea_dhcp6_renew_timer | int > 0
+      - kea_dhcp6_rebind_timer | int > 0
+      - kea_dhcp6_renew_timer | int < kea_dhcp6_rebind_timer | int
+      - kea_dhcp6_rebind_timer | int < kea_dhcp6_valid_lifetime | int
+    fail_msg: >-
+      DHCPv6 timer constraint violated.
+      Require: renew_timer < rebind_timer < valid_lifetime, all > 0.
+      Got: valid_lifetime={{ kea_dhcp6_valid_lifetime }},
+      renew_timer={{ kea_dhcp6_renew_timer }},
+      rebind_timer={{ kea_dhcp6_rebind_timer }}.
+  when: kea_dhcp6_enabled | bool
+
+- name: Pre-flight | assert kea_dhcp6_parked_packet_limit >= 1
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_dhcp6_parked_packet_limit | int >= 1
+    fail_msg: >-
+      kea_dhcp6_parked_packet_limit must be >= 1.
+      Got: {{ kea_dhcp6_parked_packet_limit }}.
+  when: kea_dhcp6_enabled | bool
+
+# ---------------------------------------------------------------------------
+# Multi-threading — DHCPv4
+# ---------------------------------------------------------------------------
+
+- name: Pre-flight | assert DHCPv4 multi-threading pool and queue sizes >= 0
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_dhcp4_multi_threading_pool_size | int >= 0
+      - kea_dhcp4_multi_threading_queue_size | int >= 0
+    fail_msg: >-
+      kea_dhcp4_multi_threading_pool_size and
+      kea_dhcp4_multi_threading_queue_size must both be >= 0
+      (0 means auto-detect from CPU count).
+      Got: pool_size={{ kea_dhcp4_multi_threading_pool_size }},
+      queue_size={{ kea_dhcp4_multi_threading_queue_size }}.
+  when: kea_dhcp4_enabled | bool
+
+# ---------------------------------------------------------------------------
+# Multi-threading — DHCPv6
+# ---------------------------------------------------------------------------
+
+- name: Pre-flight | assert DHCPv6 multi-threading pool and queue sizes >= 0
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_dhcp6_multi_threading_pool_size | int >= 0
+      - kea_dhcp6_multi_threading_queue_size | int >= 0
+    fail_msg: >-
+      kea_dhcp6_multi_threading_pool_size and
+      kea_dhcp6_multi_threading_queue_size must both be >= 0
+      (0 means auto-detect from CPU count).
+      Got: pool_size={{ kea_dhcp6_multi_threading_pool_size }},
+      queue_size={{ kea_dhcp6_multi_threading_queue_size }}.
+  when: kea_dhcp6_enabled | bool
+
+# ---------------------------------------------------------------------------
+# Subnets — DHCPv4
+# ---------------------------------------------------------------------------
+
+- name: Pre-flight | assert kea_dhcp4_subnets is a list
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_dhcp4_subnets is sequence
+      - kea_dhcp4_subnets is not string
+    fail_msg: "kea_dhcp4_subnets must be a list."
+  when: kea_dhcp4_enabled | bool
+
+- name: Pre-flight | warn when DHCPv4 is enabled but kea_dhcp4_subnets is empty
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: kea_dhcp4_enabled is true but kea_dhcp4_subnets is empty.
+      kea-dhcp4 will start but serve no addresses.
+  when:
+    - kea_dhcp4_enabled | bool
+    - kea_dhcp4_subnets | length == 0
+
+- name: Pre-flight | assert each DHCPv4 subnet entry has required keys
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - item.id is defined
+      - item.subnet is defined
+    fail_msg: >-
+      Every entry in kea_dhcp4_subnets must have 'id' and 'subnet' keys.
+      Offending entry: {{ item }}.
+  loop: "{{ kea_dhcp4_subnets }}"
+  loop_control:
+    label: "{{ item.id | default('(unnamed)') }}"
+  when:
+    - kea_dhcp4_enabled | bool
+    - kea_dhcp4_subnets | length > 0
+
+- name: Pre-flight | assert DHCPv4 subnet IDs are unique
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_dhcp4_subnets | map(attribute='id') | list | unique | length ==
+        kea_dhcp4_subnets | length
+    fail_msg: >-
+      kea_dhcp4_subnets contains duplicate subnet IDs.
+      IDs found: {{ kea_dhcp4_subnets | map(attribute='id') | list }}.
+  when:
+    - kea_dhcp4_enabled | bool
+    - kea_dhcp4_subnets | length > 1
+
+# ---------------------------------------------------------------------------
+# Subnets — DHCPv6
+# ---------------------------------------------------------------------------
+
+- name: Pre-flight | assert kea_dhcp6_subnets is a list
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_dhcp6_subnets is sequence
+      - kea_dhcp6_subnets is not string
+    fail_msg: "kea_dhcp6_subnets must be a list."
+  when: kea_dhcp6_enabled | bool
+
+- name: Pre-flight | warn when DHCPv6 is enabled but kea_dhcp6_subnets is empty
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: kea_dhcp6_enabled is true but kea_dhcp6_subnets is empty.
+      kea-dhcp6 will start but serve no addresses.
+  when:
+    - kea_dhcp6_enabled | bool
+    - kea_dhcp6_subnets | length == 0
+
+- name: Pre-flight | assert each DHCPv6 subnet entry has required keys
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - item.id is defined
+      - item.subnet is defined
+    fail_msg: >-
+      Every entry in kea_dhcp6_subnets must have 'id' and 'subnet' keys.
+      Offending entry: {{ item }}.
+  loop: "{{ kea_dhcp6_subnets }}"
+  loop_control:
+    label: "{{ item.id | default('(unnamed)') }}"
+  when:
+    - kea_dhcp6_enabled | bool
+    - kea_dhcp6_subnets | length > 0
+
+- name: Pre-flight | assert DHCPv6 subnet IDs are unique
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_dhcp6_subnets | map(attribute='id') | list | unique | length ==
+        kea_dhcp6_subnets | length
+    fail_msg: >-
+      kea_dhcp6_subnets contains duplicate subnet IDs.
+      IDs found: {{ kea_dhcp6_subnets | map(attribute='id') | list }}.
+  when:
+    - kea_dhcp6_enabled | bool
+    - kea_dhcp6_subnets | length > 1
+
+# ---------------------------------------------------------------------------
+# Control Agent
+# ---------------------------------------------------------------------------
+
+- name: Pre-flight | assert Control Agent host and port are valid
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_ctrl_agent_host | length > 0
+      - kea_ctrl_agent_port | int >= 1
+      - kea_ctrl_agent_port | int <= 65535
+    fail_msg: >-
+      kea_ctrl_agent_host must be non-empty and kea_ctrl_agent_port must be
+      an integer in the range 1-65535.
+      Got: host={{ kea_ctrl_agent_host }}, port={{ kea_ctrl_agent_port }}.
+  when: kea_ctrl_agent_enabled | bool
+
+# ---------------------------------------------------------------------------
+# DDNS
+# ---------------------------------------------------------------------------
+
+- name: Pre-flight | assert DDNS host and port are valid
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_ddns_host | length > 0
+      - kea_ddns_port | int >= 1
+      - kea_ddns_port | int <= 65535
+    fail_msg: >-
+      kea_ddns_host must be non-empty and kea_ddns_port must be an integer
+      in the range 1-65535.
+      Got: host={{ kea_ddns_host }}, port={{ kea_ddns_port }}.
+  when: kea_ddns_enabled | bool
+
+- name: Pre-flight | assert kea_bind9_keys_path is an absolute path
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_bind9_keys_path is defined
+      - kea_bind9_keys_path | length > 0
+      - kea_bind9_keys_path.startswith('/')
+    fail_msg: >-
+      kea_bind9_keys_path must be a non-empty absolute path.
+      Got: {{ kea_bind9_keys_path | default('undefined') }}.
+  when: kea_ddns_enabled | bool
+
+- name: Pre-flight | assert each kea_tsig_keys entry has required fields
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - item.name is defined
+      - item.name | length > 0
+      - item.algorithm is defined
+      - item.algorithm | length > 0
+      - item['secret-file'] is defined
+      - item['secret-file'] | length > 0
+      - item['secret-file'].startswith('/')
+    fail_msg: >-
+      Each entry in kea_tsig_keys must have non-empty 'name', 'algorithm',
+      and 'secret-file' (absolute path) fields.
+      Offending entry: {{ item }}.
+  loop: "{{ kea_tsig_keys }}"
+  loop_control:
+    label: "{{ item.name | default('(unnamed)') }}"
+  when:
+    - kea_ddns_enabled | bool
+    - kea_tsig_keys | length > 0
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+- name: Pre-flight | assert kea_logging_severity is a valid Kea log level
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_logging_severity in ["FATAL", "ERROR", "WARN", "INFO", "DEBUG"]
+    fail_msg: >-
+      kea_logging_severity must be one of FATAL, ERROR, WARN, INFO, or DEBUG.
+      Got: {{ kea_logging_severity }}.
+
+- name: Pre-flight | assert kea_logging_debuglevel is in range 0-99
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_logging_debuglevel | int >= 0
+      - kea_logging_debuglevel | int <= 99
+    fail_msg: >-
+      kea_logging_debuglevel must be an integer between 0 and 99.
+      Got: {{ kea_logging_debuglevel }}.
+
+- name: Pre-flight | assert kea_logging_maxsize and kea_logging_maxver are positive
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_logging_maxsize | int >= 1
+      - kea_logging_maxver | int >= 1
+    fail_msg: >-
+      kea_logging_maxsize and kea_logging_maxver must both be >= 1.
+      Got: maxsize={{ kea_logging_maxsize }}, maxver={{ kea_logging_maxver }}.
+
+- name: Pre-flight | assert kea_logging_raw_dhcp4 is a list
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_logging_raw_dhcp4 is sequence
+      - kea_logging_raw_dhcp4 is not string
+      - kea_logging_raw_dhcp4 | length > 0
+    fail_msg: "kea_logging_raw_dhcp4 must be a non-empty list of logger dicts."
+  when: kea_dhcp4_enabled | bool
+
+- name: Pre-flight | assert kea_logging_raw_dhcp6 is a list
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_logging_raw_dhcp6 is sequence
+      - kea_logging_raw_dhcp6 is not string
+      - kea_logging_raw_dhcp6 | length > 0
+    fail_msg: "kea_logging_raw_dhcp6 must be a non-empty list of logger dicts."
+  when: kea_dhcp6_enabled | bool
+
+- name: Pre-flight | assert kea_logging_raw_ctrl_agent is a list
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_logging_raw_ctrl_agent is sequence
+      - kea_logging_raw_ctrl_agent is not string
+      - kea_logging_raw_ctrl_agent | length > 0
+    fail_msg: "kea_logging_raw_ctrl_agent must be a non-empty list of logger dicts."
+  when: kea_ctrl_agent_enabled | bool
+
+- name: Pre-flight | assert kea_logging_raw_ddns is a list
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_logging_raw_ddns is sequence
+      - kea_logging_raw_ddns is not string
+      - kea_logging_raw_ddns | length > 0
+    fail_msg: "kea_logging_raw_ddns must be a non-empty list of logger dicts."
+  when: kea_ddns_enabled | bool
+
+# ---------------------------------------------------------------------------
+# Raw options (pass-through dicts)
+# ---------------------------------------------------------------------------
+
+- name: Pre-flight | assert kea_dhcp4_raw_options is a mapping
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_dhcp4_raw_options is mapping
+    fail_msg: >-
+      kea_dhcp4_raw_options must be a dict (mapping).
+      Got: {{ kea_dhcp4_raw_options | type_debug }}.
+  when: kea_dhcp4_enabled | bool
+
+- name: Pre-flight | assert kea_dhcp6_raw_options is a mapping
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_dhcp6_raw_options is mapping
+    fail_msg: >-
+      kea_dhcp6_raw_options must be a dict (mapping).
+      Got: {{ kea_dhcp6_raw_options | type_debug }}.
+  when: kea_dhcp6_enabled | bool
+
+- name: Pre-flight | assert kea_ctrl_agent_raw_options is a mapping
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - kea_ctrl_agent_raw_options is mapping
+    fail_msg: >-
+      kea_ctrl_agent_raw_options must be a dict (mapping).
+      Got: {{ kea_ctrl_agent_raw_options | type_debug }}.
+  when: kea_ctrl_agent_enabled | bool

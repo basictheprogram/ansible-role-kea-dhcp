@@ -2,7 +2,35 @@
 - name: Converge
   hosts: all
   gather_facts: true
-  tasks:
-    - name: Print OS information
-      ansible.builtin.debug:
-        msg: "Running on {{ ansible_distribution }} {{ ansible_distribution_version }} ({{ ansible_distribution_release }})"
+  become: true
+  pre_tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+        force_apt_get: true
+      changed_when: false
+      when: ansible_facts.os_family == 'Debian'
+    - name: Update dnf cache
+      ansible.builtin.dnf:
+        update_cache: true
+      changed_when: false
+      when: ansible_facts.os_family == 'RedHat'
+  vars:
+    kea_dhcp4_enabled: true
+    kea_dhcp6_enabled: false
+    kea_ctrl_agent_enabled: false
+    kea_ddns_enabled: false
+
+    # Minimal test subnet — RFC 5737 TEST-NET-1, documentation use only.
+    kea_dhcp4_subnets:
+      - id: 1
+        subnet: "192.0.2.0/24"
+        pools:
+          - pool: "192.0.2.100 - 192.0.2.200"
+        option-data:
+          - name: "routers"
+            data: "192.0.2.1"
+
+  roles:
+    - role: ansible-role-kea-dhcp

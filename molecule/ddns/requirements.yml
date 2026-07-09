@@ -1,0 +1,6 @@
+---
+# Molecule dependency requirements for the ddns scenario.
+# This role has no Galaxy role or collection dependencies — everything
+# used is in ansible.builtin.
+collections: []
+roles: []

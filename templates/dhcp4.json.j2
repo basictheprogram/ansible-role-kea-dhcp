@@ -1,58 +1,54 @@
 {
     "Dhcp4": {
         "interfaces-config": {
-            "interfaces": {{ kea_dhcp4_interfaces | to_nice_json(indent=4, ensure_ascii=False ) | indent(12, False) }},
+            "interfaces": {{ kea_dhcp4_interfaces | to_nice_json(indent=4, ensure_ascii=False) | indent(12, False) }},
             "dhcp-socket-type": "raw"
         },
 
 {% if kea_ctrl_agent_enabled %}
-        // Create a socket which the Control Agent may use to communicate.
-        "control-socket": {
-            "socket-type": "unix",
-            "socket-name": "/kea/sockets/dhcp4.socket"
-        },
-{% endif %}
+        "control-sockets": [
+            {
+                "socket-type": "unix",
+                "socket-name": "kea4-ctrl-socket"
+            }
+        ],
 
+{% endif %}
 {% if kea_ddns_enabled %}
         "dhcp-ddns": {
-            // Connectivity parameters
-            "enable-updates": {{ kea_ddns['enable-updates'] | bool | to_json}},
-            "server-ip": "{{ kea_ddns['server-ip'] | default('127.0.0.1') }}",
-            "server-port": {{ kea_ddns['server-port'] | default(53001) | int }},
-            "sender-ip": "{{ kea_ddns['sender-ip'] | default('') }}",
-            "sender-port": {{ kea_ddns['sender-port'] | default(0) | int }}
+            "enable-updates": true,
+            "server-ip": "{{ kea_ddns_host }}",
+            "server-port": {{ kea_ddns_port | int }},
+            "sender-ip": "",
+            "sender-port": 0
         },
 
-        // Behavioral parameters (global)
-        "ddns-send-updates": {{ kea_ddns['send-updates'] | default(true) | bool | to_json }},
-        "ddns-override-no-update": {{ kea_ddns['override-no-update'] | default(false) | bool | to_json }},
-        "ddns-override-client-update": {{ kea_ddns['override-client-update'] | default(false) | bool | to_json }},
-        "ddns-replace-client-name": "{{ kea_ddns['replace-client-name'] | default('never') }}",
-        "ddns-generated-prefix": "{{ kea_ddns['generated-prefix'] | default('myhost') }}",
-        "ddns-qualifying-suffix": "{{ kea_ddns['qualifying-suffix'] | default('') }}",
-        "ddns-update-on-renew": {{ kea_ddns['update-on-renew'] | bool | to_json }},
-        "ddns-conflict-resolution-mode": "{{ kea_ddns['conflict-resolution-mode'] | default('check-with-dhcid') }}",
-        "hostname-char-set": "{{ kea_ddns['hostname-char-set'] | default('') }}",
-        "hostname-char-replacement": "{{ kea_ddns['hostname-char-replacement'] | default('') }}",
-{% endif %}
+        "ddns-send-updates": true,
+        "ddns-override-no-update": false,
+        "ddns-override-client-update": false,
+        "ddns-replace-client-name": "never",
+        "ddns-generated-prefix": "myhost",
+        "ddns-qualifying-suffix": "",
+        "ddns-update-on-renew": false,
+        "ddns-conflict-resolution-mode": "check-with-dhcid",
+        "hostname-char-set": "",
+        "hostname-char-replacement": "",
 
-        // Specifies credentials to access lease database.
+{% endif %}
         "lease-database": {
             "type": "memfile",
-            "name": "/kea/leases/dhcp4.csv",
+            "name": "{{ kea_lease_dir }}/kea-leases4.csv",
             "lfc-interval": 3600
         },
 
-        // Multi-threading options.
         "multi-threading": {
             "enable-multi-threading": {{ kea_dhcp4_multi_threading_enable | bool | to_json }},
-{% if kea_dhcp4_multi_threading_enable %}
+{% if kea_dhcp4_multi_threading_enable | bool %}
             "thread-pool-size": {{ kea_dhcp4_multi_threading_pool_size | int }},
             "packet-queue-size": {{ kea_dhcp4_multi_threading_queue_size | int }}
 {% endif %}
         },
 
-        // Lease queue and lifetime values.
         "parked-packet-limit": {{ kea_dhcp4_parked_packet_limit | int }},
         "valid-lifetime": {{ kea_dhcp4_valid_lifetime | int }},
         "renew-timer": {{ kea_dhcp4_renew_timer | int }},
@@ -62,9 +58,8 @@
         "{{ key }}": {{ value | to_nice_json(indent=4, ensure_ascii=False) | indent(8, False) }},
 
 {% endfor %}
-        // We include the subnet file separately to make this one less cluttered.
-        <?include "/kea/config/subnet4.json"?>
+        "subnet4": {{ kea_dhcp4_subnets | to_nice_json(indent=4, ensure_ascii=False) | indent(8, False) }},
 
-        "loggers": {{ kea_logging_raw_dhcp4 | to_nice_json(indent=4, ensure_ascii=False ) | indent(8, False) }}
+        "loggers": {{ kea_logging_raw_dhcp4 | to_nice_json(indent=4, ensure_ascii=False) | indent(8, False) }}
     }
 }

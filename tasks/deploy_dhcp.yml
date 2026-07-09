@@ -1,50 +1,25 @@
 ---
+- name: "Install kea-dhcp server package for DHCP version {{ dhcp_ip_version }}"
+  ansible.builtin.apt:
+    name: "kea-dhcp{{ dhcp_ip_version }}-server"
+    state: present
+
 - name: Copy keys to Kea configuration directory
   ansible.builtin.include_tasks: key_management.yml
-  when: kea_ddns_enabled
+  when: kea_ddns_enabled | bool
 
-- name: "Copy Kea DHCP configuration files - ipv{{ outer_item.dhcp_ip_version }}"
+- name: "Render kea-dhcp configuration for DHCP version {{ dhcp_ip_version }}"
   ansible.builtin.template:
-    src: "{{ item }}"
-    dest: "{{ kea_container_base_dir }}/config/{{ item | regex_replace('.j2', '') }}"
-    owner: "root"
-    group: "101"
-    mode: "0664"
-  loop:
-    - "dhcp{{ outer_item.dhcp_ip_version }}.json.j2"
-    - "subnet{{ outer_item.dhcp_ip_version }}.json.j2"
-  register: kea_config
+    src: "dhcp{{ dhcp_ip_version }}.json.j2"
+    dest: "{{ kea_base_dir }}/kea-dhcp{{ dhcp_ip_version }}.conf"
+    owner: root
+    group: _kea
+    mode: "0640"
+  notify: "Reload kea-dhcp{{ dhcp_ip_version }}-server"
 
-- name: "Pull Kea DHCP image - ipv{{ outer_item.dhcp_ip_version }}"
-  community.docker.docker_image:
-    name: "{{ outer_item.container_image }}"
-    source: pull
-    force_source: false
-  register: kea_image_pull
-  retries: 3
-  delay: 15
-  until: kea_image_pull is not failed
-
-- name: "Start Kea DHCP container - ipv{{ outer_item.dhcp_ip_version }}"
-  community.docker.docker_container:
-    name: "{{ outer_item.container_name }}"
-    image: "{{ outer_item.container_image }}"
-    pull: missing
-    state: started
-    restart_policy: unless-stopped
-    command: "{{ outer_item.container_command }}"
-    volumes:
-      - "{{ kea_container_base_dir }}/config:/kea/config:ro"
-      - "{{ kea_container_base_dir }}/leases:/kea/leases"
-      - "{{ kea_container_base_dir }}/logs:/kea/logs"
-      - "{{ kea_container_base_dir }}/sockets:/kea/sockets"
-      - "{{ kea_container_base_dir }}/entrypoint.d:/entrypoint.d:ro"
-    comparisons:
-      networks: strict
-    network_mode: host
-
-- name: "Reload Kea DHCP configuration - ipv{{ outer_item.dhcp_ip_version }}" # noqa: no-handler
-  ansible.builtin.command: "docker kill --signal=HUP {{ outer_item.container_name }}"
-  changed_when: true
-  when: kea_config.changed
-  notify: Reload Kea Control Agent
+- name: "Manage kea-dhcp server service state for DHCP version {{ dhcp_ip_version }}"
+  ansible.builtin.systemd:
+    name: "kea-dhcp{{ dhcp_ip_version }}-server"
+    state: "{{ 'started' if kea_service_manage | bool else 'stopped' }}"
+    enabled: "{{ kea_service_manage | bool }}"
+    daemon_reload: true

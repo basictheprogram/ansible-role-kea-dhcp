@@ -1,24 +1,118 @@
 ---
-- name: Find BIND9 tsig key files
-  ansible.builtin.find:
-    paths: /etc/bind
-    patterns: "*.key"
-    file_type: file
-  register: bind_keys
+# ---------------------------------------------------------------------------
+# TSIG key discovery and preparation
+#
+# Three scenarios are handled automatically:
+#
+# A  Co-located — BIND9 and Kea on the same host.
+#    kea_bind9_keys_host: ""  (the default)
+#    *.key files are discovered locally under kea_bind9_keys_path.
+#
+# B  Split hosts — BIND9 on a separate host from Kea.
+#    kea_bind9_keys_host: "bind9.example.com"
+#    The find and slurp steps are delegated to that host; secret files
+#    are written to the Kea host.
+#
+# C  No BIND9 keys available / fully manual.
+#    If no *.key files are found and kea_tsig_keys is already populated
+#    (from host_vars/group_vars), those entries are used as-is.
+#    Manually defined entries always take precedence over discovered ones
+#    when key names collide.
+#    If neither source provides keys a warning is emitted; kea-dhcp-ddns
+#    will start with an empty tsig-keys list and DDNS updates will be
+#    unsigned.
+# ---------------------------------------------------------------------------
 
-- name: Read key files
+- name: Key management | resolve key discovery delegate
+  ansible.builtin.set_fact:
+    _kea_key_delegate: >-
+      {{ kea_bind9_keys_host if kea_bind9_keys_host | length > 0
+         else inventory_hostname }}
+
+- name: Key management | find BIND9 TSIG key files
+  ansible.builtin.find:
+    paths: "{{ kea_bind9_keys_path }}"
+    patterns: "*.key"
+    excludes: "rndc.key"
+    file_type: file
+  register: _bind_key_files
+  delegate_to: "{{ _kea_key_delegate }}"
+
+- name: Key management | slurp BIND9 key file contents
   ansible.builtin.slurp:
     src: "{{ item.path }}"
-  loop: "{{ bind_keys.files }}"
-  register: raw_keys
-  when: bind_keys.matched > 0
+  loop: "{{ _bind_key_files.files }}"
+  register: _bind_key_contents
+  no_log: true
+  delegate_to: "{{ _kea_key_delegate }}"
+  when: _bind_key_files.matched > 0
 
-- name: Write BIND key files as Kea secrets
+- name: Key management | initialize discovered keys list
+  ansible.builtin.set_fact:
+    _kea_discovered_tsig_keys: []
+
+- name: Key management | parse name, algorithm, and secret from key files
+  ansible.builtin.set_fact:
+    _kea_discovered_tsig_keys: >-
+      {%- set keys = [] -%}
+      {%- for result in _bind_key_contents.results | default([]) -%}
+        {%- if not result.skipped | default(false) -%}
+          {%- set content = result.content | b64decode -%}
+          {%- set names = content | regex_findall('key\s+"([^"]+)"') -%}
+          {%- set algos = content | regex_findall('algorithm\s+([\w-]+)\s*;') -%}
+          {%- set secrets = content | regex_findall('secret\s+"([^"]+)"') -%}
+          {%- if names and algos and secrets -%}
+            {%- set key_name = names | first -%}
+            {%- set safe_name = key_name | regex_replace('[^a-zA-Z0-9._-]', '_') -%}
+            {%- set _ = keys.append({
+              'name': key_name,
+              'algorithm': algos | first | upper,
+              '_secret': secrets | first,
+              'secret-file': kea_base_dir + '/' + safe_name
+            }) -%}
+          {%- endif -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ keys }}
+  no_log: true
+  when: _bind_key_files.matched > 0
+
+- name: Key management | write TSIG secret files on Kea host
   ansible.builtin.copy:
-    dest: "{{ kea_container_base_dir }}/config/{{ item.item.path | basename }}"
-    content: "{{ item.content | b64decode | regex_replace('(?s)^.*secret\\s+\"([^\"]+)\".*$', '\\1') }}"
+    dest: "{{ item['secret-file'] }}"
+    content: "{{ item['_secret'] }}"
+    owner: root
+    group: _kea
     mode: "0640"
-    owner: "root"
-    group: "101"
-  loop: "{{ raw_keys.results }}"
-  when: bind_keys.matched > 0
+  loop: "{{ _kea_discovered_tsig_keys }}"
+  no_log: true
+  when: _kea_discovered_tsig_keys | length > 0
+
+- name: Key management | merge discovered keys into kea_tsig_keys
+  ansible.builtin.set_fact:
+    kea_tsig_keys: >-
+      {%- set existing_names = kea_tsig_keys | map(attribute='name') | list -%}
+      {%- set to_add = [] -%}
+      {%- for key in _kea_discovered_tsig_keys -%}
+        {%- if key.name not in existing_names -%}
+          {%- set _ = to_add.append({
+            'name': key.name,
+            'algorithm': key.algorithm,
+            'secret-file': key['secret-file']
+          }) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ kea_tsig_keys + to_add }}
+  when: _kea_discovered_tsig_keys | length > 0
+
+- name: Key management | warn when no TSIG keys are available
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: kea_ddns_enabled is true but no TSIG keys are configured.
+      No *.key files were found under {{ kea_bind9_keys_path }} on
+      {{ _kea_key_delegate }}, and kea_tsig_keys is empty.
+      Set kea_bind9_keys_host to the BIND9 server hostname, ensure
+      *.key files exist at kea_bind9_keys_path, or populate
+      kea_tsig_keys manually in host_vars.
+      kea-dhcp-ddns will start with an empty tsig-keys list.
+  when: kea_tsig_keys | length == 0

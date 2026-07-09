@@ -1,48 +1,39 @@
 ---
-- name: Create Kea DDNS Docker network
-  community.docker.docker_network:
-    name: "{{ item.name }}"
-  loop: "{{ kea_ddns_container_networks | default([]) }}"
-  when: item.name | default('') | length > 0
+- name: Install kea-dhcp-ddns-server package
+  ansible.builtin.apt:
+    name: kea-dhcp-ddns-server
+    state: present
 
-- name: Deploy the Kea DDNS service
-  when: kea_ddns_enabled
-  block:
-    - name: Copy DDNS configuration files
-      ansible.builtin.template:
-        src: "{{ item }}"
-        dest: "{{ kea_container_base_dir }}/config/{{ item | regex_replace('.j2', '') }}"
-        owner: "root"
-        group: "101"
-        mode: "0664"
-      loop:
-        - "ddns.json.j2"
-      notify: Reload Kea DDNS Container
+# Ubuntu LP #2121327 — the shipped AppArmor profile for kea-dhcp-ddns is
+# missing permissions for both the log file and its lock file.  Apply a
+# local override so the denials do not appear in dmesg.  This file is
+# included by the main profile and is preserved across package upgrades.
+- name: "Apply AppArmor local override for kea-dhcp-ddns log files (LP #2121327)"
+  ansible.builtin.copy:
+    dest: /etc/apparmor.d/local/usr.sbin.kea-dhcp-ddns
+    content: |
+      # Site-local additions — workaround for LP #2121327
+      # Missing permissions for log file and lock file in shipped profile
+      # (isc-kea 3.0.3-1).  Remove this file once the upstream package is fixed.
+      /var/log/kea/kea-dhcp-ddns.log rw,
+      /var/log/kea/kea-dhcp-ddns.log.lock rwk,
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload kea-dhcp-ddns AppArmor profile
 
-    - name: Pull Kea DDNS image
-      community.docker.docker_image:
-        name: "{{ kea_ddns_container_image }}"
-        source: pull
-        force_source: false
-      register: kea_ddns_image_pull
-      retries: 3
-      delay: 15
-      until: kea_ddns_image_pull is not failed
+- name: Render kea-dhcp-ddns configuration
+  ansible.builtin.template:
+    src: ddns.json.j2
+    dest: "{{ kea_base_dir }}/kea-dhcp-ddns.conf"
+    owner: root
+    group: _kea
+    mode: "0640"
+  notify: Reload kea-dhcp-ddns-server
 
-    - name: Start Kea DDNS container
-      community.docker.docker_container:
-        name: "{{ kea_ddns_container_name }}"
-        image: "{{ kea_ddns_container_image }}"
-        pull: missing
-        state: started
-        restart_policy: unless-stopped
-        command: "{{ kea_ddns_container_command }}"
-        volumes:
-          - "{{ kea_container_base_dir }}/config:/kea/config:ro"
-          - "{{ kea_container_base_dir }}/sockets:/kea/sockets"
-          - "{{ kea_container_base_dir }}/logs:/kea/logs"
-        comparisons:
-          networks: strict
-        network_mode: "{{ kea_ddns_container_use_host_network | bool | ternary('host', omit) }}"
-        networks: "{{ kea_ddns_container_use_host_network | bool | ternary(omit, kea_ddns_container_networks) }}"
-        published_ports: "{{ kea_ddns_container_use_host_network | bool | ternary(omit, kea_ddns_container_ports) }}"
+- name: Manage kea-dhcp-ddns-server service state
+  ansible.builtin.systemd:
+    name: kea-dhcp-ddns-server
+    state: "{{ 'started' if kea_service_manage | bool else 'stopped' }}"
+    enabled: "{{ kea_service_manage | bool }}"
+    daemon_reload: true

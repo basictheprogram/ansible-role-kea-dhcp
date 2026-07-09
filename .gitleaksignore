@@ -1,0 +1,7 @@
+# Fixed, well-known mock TSIG/RNDC test secrets documented in
+# molecule/ddns/prepare.yml — not real credentials. The base64 values are
+# constants used by molecule/ddns/tests/test_ddns.py to assert correct
+# key extraction; they're generated once and hard-coded on purpose so the
+# test suite has something deterministic to check against.
+molecule/ddns/prepare.yml:generic-api-key:15
+molecule/ddns/prepare.yml:generic-api-key:17

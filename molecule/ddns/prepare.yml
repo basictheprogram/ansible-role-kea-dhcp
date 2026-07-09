@@ -1,0 +1,70 @@
+---
+# Prepare the test container to simulate a host where Kea and BIND9 share
+# the same machine.  BIND9 is not installed — only the key files it would
+# have generated are placed under /etc/bind/ so that key_management.yml
+# can be exercised without a real BIND9 installation.
+#
+# Two files are created:
+#   /etc/bind/d2.sha512.key  — a TSIG key that key_management.yml MUST copy
+#   /etc/bind/rndc.key       — BIND's control key, which must NOT be copied
+#
+# Both use the BIND "key" stanza format that tsig-keygen and rndc-confgen
+# produce.  The base64 secrets are fixed, well-known test values used by
+# test_ddns.py to assert correct extraction.
+#
+# MOCK_TSIG_SECRET = "dGVzdC10c2lnLXNlY3JldC1mb3ItbW9sZWN1bGU="
+#   (base64 of "test-tsig-secret-for-molecule")
+# MOCK_RNDC_SECRET = "dGVzdC1ybmRjLXNlY3JldA=="
+#   (base64 of "test-rndc-secret")
+
+- name: Prepare
+  hosts: all
+  gather_facts: true
+  become: true
+  tasks:
+    - name: Prepare | enable universe component in apt sources
+      ansible.builtin.replace:
+        path: /etc/apt/sources.list.d/ubuntu.sources
+        regexp: '^(Components:(?:(?!\buniverse\b).)*$)'
+        replace: '\1 universe'
+
+    - name: Prepare | refresh apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 0
+
+    - name: Prepare | create /etc/bind directory (simulates bind9 install)
+      ansible.builtin.file:
+        path: /etc/bind
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Prepare | write mock TSIG key file for kea-dhcp-ddns
+      ansible.builtin.copy:
+        dest: /etc/bind/d2.sha512.key
+        # tsig-keygen -a hmac-sha512 d2.sha512.key produces this format.
+        # The secret value is the fixed test constant MOCK_TSIG_SECRET.
+        content: |
+          key "d2.sha512.key" {
+            algorithm hmac-sha512;
+            secret "dGVzdC10c2lnLXNlY3JldC1mb3ItbW9sZWN1bGU=";
+          };
+        owner: root
+        group: root
+        mode: "0640"
+
+    - name: Prepare | write mock rndc.key (must not be copied by key_management)
+      ansible.builtin.copy:
+        dest: /etc/bind/rndc.key
+        # rndc-confgen -a produces this format.  key_management.yml excludes
+        # rndc.key by name so this file must never appear under /etc/kea/.
+        content: |
+          key "rndc-key" {
+            algorithm hmac-sha256;
+            secret "dGVzdC1ybmRjLXNlY3JldA==";
+          };
+        owner: root
+        group: root
+        mode: "0640"

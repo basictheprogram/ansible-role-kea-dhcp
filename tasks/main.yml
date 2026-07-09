@@ -1,83 +1,78 @@
 ---
-- name: "Create expected folders"
-  ansible.builtin.file:
-    state: directory
-    path: "{{ item }}"
-    mode: "0750"
-    owner: "root"
-    group: "101"
-  loop:
-    - "{{ kea_container_base_dir }}"
-    - "{{ kea_container_base_dir }}/config"
-    - "{{ kea_container_base_dir }}/leases"
-    - "{{ kea_container_base_dir }}/logs"
-    - "{{ kea_container_base_dir }}/sockets"
-    - "{{ kea_container_base_dir }}/entrypoint.d"
+- name: Pre-flight checks
+  ansible.builtin.include_tasks: pre-flight.yml
+  tags: always
 
-- name: Ensure Python dependencies for community.docker are installed
-  ansible.builtin.package:
-    name: "{{ kea_docker_python_packages_map[ansible_facts['os_family']] | default(kea_docker_python_packages_map['default']) }}"
+- name: Install kea-common package
+  ansible.builtin.apt:
+    name: kea-common
     state: present
-  when: kea_install_docker_python_dependencies | bool
+    update_cache: true
 
-- name: Deploy the DHCP services
+- name: Create Kea base configuration directory
+  ansible.builtin.file:
+    path: "{{ kea_base_dir }}"
+    state: directory
+    owner: root
+    group: _kea
+    mode: "0755"
+
+- name: Create Kea lease directory
+  ansible.builtin.file:
+    path: "{{ kea_lease_dir }}"
+    state: directory
+    owner: _kea
+    group: _kea
+    mode: "0750"
+
+- name: Create Kea log directory
+  ansible.builtin.file:
+    path: "{{ kea_log_dir }}"
+    state: directory
+    owner: _kea
+    group: _kea
+    mode: "0750"
+
+- name: Deploy DHCPv4 service
   ansible.builtin.include_tasks: deploy_dhcp.yml
-  loop:
-    - container_name: "{{ kea_dhcp4_container_name }}"
-      container_image: "{{ kea_dhcp4_container_image }}"
-      container_command: "{{ kea_dhcp4_container_command }}"
-      dhcp_ip_version: "4"
-      enabled: "{{ kea_dhcp4_enabled | bool }}"
-    - container_name: "{{ kea_dhcp6_container_name }}"
-      container_image: "{{ kea_dhcp6_container_image }}"
-      container_command: "{{ kea_dhcp6_container_command }}"
-      dhcp_ip_version: "6"
-      enabled: "{{ kea_dhcp6_enabled | bool }}"
-  loop_control:
-    loop_var: "outer_item"
-  when: outer_item.enabled
+  vars:
+    dhcp_ip_version: "4"
+  when: kea_dhcp4_enabled | bool
 
-- name: Deploy the Control Agent service
-  when: kea_ctrl_agent_enabled
+- name: Deploy DHCPv6 service
+  ansible.builtin.include_tasks: deploy_dhcp.yml
+  vars:
+    dhcp_ip_version: "6"
+  when: kea_dhcp6_enabled | bool
+
+- name: Deploy Control Agent service
+  when: kea_ctrl_agent_enabled | bool
   block:
-    - name: Copy Control Agent configuration files
+    - name: Install kea-ctrl-agent package
+      ansible.builtin.apt:
+        name: kea-ctrl-agent
+        state: present
+
+    - name: Render kea-ctrl-agent configuration
       ansible.builtin.template:
-        src: "{{ item }}"
-        dest: "{{ kea_container_base_dir }}/config/{{ item | regex_replace('.j2', '') }}"
-        owner: "root"
-        group: "101"
-        mode: "0664"
-      loop:
-        - "ctrl-agent.json.j2"
-      notify: Reload Kea Control Agent
+        src: ctrl-agent.json.j2
+        dest: "{{ kea_base_dir }}/kea-ctrl-agent.conf"
+        owner: root
+        group: _kea
+        mode: "0640"
+      notify: Reload kea-ctrl-agent
 
-    - name: Pull Kea Control Agent image
-      community.docker.docker_image:
-        name: "{{ kea_ctrl_agent_container_image }}"
-        source: pull
-        force_source: false
-      register: kea_ctrl_agent_image_pull
-      retries: 3
-      delay: 15
-      until: kea_ctrl_agent_image_pull is not failed
+    - name: Manage kea-ctrl-agent service state
+      ansible.builtin.systemd:
+        name: kea-ctrl-agent
+        state: "{{ 'started' if kea_service_manage | bool else 'stopped' }}"
+        enabled: "{{ kea_service_manage | bool }}"
+        daemon_reload: true
 
-    - name: Start Kea Control Agent container
-      community.docker.docker_container:
-        name: "{{ kea_ctrl_agent_container_name }}"
-        image: "{{ kea_ctrl_agent_container_image }}"
-        pull: missing
-        state: started
-        restart_policy: unless-stopped
-        command: "{{ kea_ctrl_agent_container_command }}"
-        volumes:
-          - "{{ kea_container_base_dir }}/config:/kea/config:ro"
-          - "{{ kea_container_base_dir }}/sockets:/kea/sockets"
-        comparisons:
-          networks: strict
-        network_mode: "{{ kea_ctrl_agent_container_use_host_network | bool | ternary('host', omit) }}"
-        networks: "{{ kea_ctrl_agent_container_use_host_network | bool | ternary(omit, kea_ctrl_agent_container_networks) }}"
-        published_ports: "{{ kea_ctrl_agent_container_use_host_network | bool | ternary(omit, kea_ctrl_agent_container_ports) }}"
+- name: Manage TSIG keys for DDNS
+  ansible.builtin.include_tasks: key_management.yml
+  when: kea_ddns_enabled | bool
 
-- name: Deploy the DDNS services
+- name: Deploy DDNS service
   ansible.builtin.include_tasks: deploy_ddns.yml
-  when: kea_ddns_enabled
+  when: kea_ddns_enabled | bool

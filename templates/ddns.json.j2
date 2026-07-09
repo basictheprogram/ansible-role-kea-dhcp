@@ -3,7 +3,7 @@
 {
   "comment": "{{ domain.comment }}",
   "name": "{{ domain.name }}",
-  "key-name": "d2.sha512.key",
+  "key-name": "{{ domain['key-name'] }}",
   "dns-servers": [
 {% for dns in domain.dns_servers %}
     {
@@ -31,21 +31,21 @@
 {
   "DhcpDdns":
   {
-    "comment": "{{ kea_ddns['comment'] | default('DDNS configuration for Kea DHCPv4') }}",
-    "ip-address": "{{ kea_ddns['ip-address'] | default('127.0.0.1') }}",
-    "port": {{ kea_ddns['port'] | default(53001) | int }},
+    "ip-address": "{{ kea_ddns_host }}",
+    "port": {{ kea_ddns_port | int }},
     "dns-server-timeout": 10000,
 
     "user-context": { "version": 1 },
 
 {% if kea_ctrl_agent_enabled %}
-    // Create a socket which the Control Agent may use to communicate.
-    "control-socket": {
-        "socket-type": "unix",
-        "socket-name": "/kea/sockets/ddns.socket"
-    },
-{% endif %}
+    "control-sockets": [
+        {
+            "socket-type": "unix",
+            "socket-name": "kea-ddns-ctrl-socket"
+        }
+    ],
 
+{% endif %}
     "forward-ddns":
     {
       "ddns-domains":
@@ -67,6 +67,6 @@
 {{ render_tsig_keys(kea_tsig_keys) | trim | indent(8, first=True) }}
     ],
 
-    "loggers": {{ kea_logging_raw_ddns | to_nice_json(indent=4, ensure_ascii=False ) | indent(8, False) }}
+    "loggers": {{ kea_logging_raw_ddns | to_nice_json(indent=4, ensure_ascii=False) | indent(4, False) }}
   }
 }

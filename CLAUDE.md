@@ -21,6 +21,38 @@ upstream will receive PRs from this project. See NOTICE for attribution.
 
 ---
 
+## Scope Constraints
+
+These boundaries are hard. Do not relax them without an explicit decision from
+the human, and always flag the request before proceeding.
+
+* **Ubuntu Resolute (26.04 LTS) only.** No other Ubuntu releases, no Debian,
+  no RHEL, no Alpine. `tasks/pre-flight.yml` asserts
+  `ansible_facts['distribution'] == "Ubuntu"` and
+  `ansible_facts['distribution_version'] == "26.04"` at runtime, and
+  `meta/main.yml`'s `description:` states the supported platform for Galaxy
+  browsing. (There is no `galaxy_info.platforms:` key — Galaxy ignores that
+  field and ansible-lint's schema validator for it has a long-standing
+  false-positive bug.) If asked to add another distro, decline and explain
+  why this role exists specifically for Resolute's Kea v3 apt packages.
+
+* **ISC Kea v3 only.** The role installs the `kea-dhcp4-server`,
+  `kea-dhcp6-server`, `kea-ctrl-agent`, and `kea-dhcp-ddns-server` apt
+  packages shipped in Ubuntu Resolute's repositories (Kea v3). In Ubuntu
+  Resolute the systemd unit names match the package names: `kea-dhcp4-server`,
+  `kea-dhcp6-server`, `kea-dhcp-ddns-server`, and `kea-ctrl-agent`. Do not
+  add workarounds for Kea v2 behaviour or speculative support for a future
+  Kea v4.
+
+* **`ansible.builtin` only — no external collections.** Everything the role
+  needs (`apt`, `template`, `systemd`, `file`, `copy`, `find`, `slurp`) is
+  in `ansible.builtin`. Do not introduce `community.general`,
+  `ansible.posix`, `community.docker`, or any other collection dependency.
+
+* **No Docker, no containers.** See "Settled Decisions" below.
+
+---
+
 ## Source of Truth
 
 This `CLAUDE.md` is the authoritative spec for the role. Read it before
@@ -30,6 +62,89 @@ design decisions, and commit conventions live here.
 If something in the code disagrees with this file, this file is right
 unless explicitly told otherwise — flag the discrepancy and ask before
 "fixing" the design to match the code.
+
+---
+
+## Behavioral Guidelines
+
+Adapted from the [Karpathy CLAUDE.md][karpathy-claude] behavioral guidelines.
+These bias toward caution over speed. For trivial tasks, use judgment.
+
+Note: The article at https://levelup.gitconnected.com/the-4-lines-every-claude-md-needs-2717a46866f6
+was referenced as a source for this section but is behind a paywall and could
+not be retrieved. The Karpathy guidelines below cover the same ground.
+
+### 1. Think Before Changing
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing any task:
+
+* State assumptions about target system state explicitly. If uncertain, ask.
+* If multiple interpretations exist, present them — don't pick silently.
+  For example: "This could mean adding a variable to `defaults/` or
+  hard-coding it in the template — which do you want?"
+* If a simpler approach exists, say so. Push back when warranted.
+* If something is unclear, stop. Name what's confusing. Ask.
+
+### 2. Simplicity First
+
+**Minimum change that solves the problem. Nothing speculative.**
+
+* No new variables in `defaults/main.yml` beyond what the task requires.
+  Every new variable is a public interface change for consumers.
+* No new Jinja2 abstractions for single-use template blocks.
+* No "flexibility" or "future-proofing" that wasn't requested.
+* No error handling for scenarios the role cannot encounter on Ubuntu
+  Resolute with Kea v3 apt packages.
+* If you write 50 lines of tasks and it could be 20, rewrite it.
+
+Ask yourself: "Would a senior Ansible engineer say this is overcomplicated?"
+If yes, simplify.
+
+### 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing tasks, templates, handlers, or defaults:
+
+* Don't "improve" adjacent tasks, comments, or formatting.
+* Don't refactor things that aren't broken.
+* Match existing YAML style, even if you'd do it differently.
+* If you notice an unrelated issue (unused variable, wrong mode, stale
+  comment), mention it — don't silently fix it.
+
+When your changes create orphans:
+
+* Remove variables, handler notify strings, or task references that YOUR
+  changes made unused.
+* Don't remove pre-existing dead code unless asked.
+
+The test: every changed line should trace directly to the user's request.
+
+### 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals before starting:
+
+* "Add DHCPv6 support" → "molecule converge passes with
+  `kea_dhcp6_enabled: true`; second run reports zero changes"
+* "Fix handler wiring" → "handler name matches every `notify:` string
+  that references it; pre-commit lint passes"
+* "Update defaults" → "pre-commit lint passes; no consumer variable
+  renamed or removed without a BREAKING CHANGE footer"
+
+For multi-step tasks, state a brief plan before touching any file:
+
+```
+1. [step] → verify: [check]
+2. [step] → verify: [check]
+3. [step] → verify: [check]
+```
+
+Strong success criteria allow independent looping. Weak criteria
+("make it work") require constant clarification.
 
 ---
 
@@ -62,9 +177,7 @@ ansible-role-kea-dhcp/
     dhcp6.json.j2        # kea-dhcp6 configuration
     ctrl-agent.json.j2   # kea-ctrl-agent configuration
     ddns.json.j2         # kea-dhcp-ddns configuration
-    subnet4.json.j2      # DHCPv4 subnet declarations
-    subnet6.json.j2      # DHCPv6 subnet declarations
-  meta/main.yml          # Galaxy metadata, Ubuntu Resolute platform
+  meta/main.yml          # Galaxy metadata (Resolute support noted in description)
   molecule/
     default/
       molecule.yml       # Docker driver, image driven by env vars
@@ -119,9 +232,10 @@ These are locked. Don't propose alternatives unless the human raises them:
   `content:` — always go through the template.
 
 * **Handlers, not immediate restarts.** Config changes notify handlers
-  (`Reload kea-dhcp4`, etc.). Tasks must never use `state: restarted`
-  directly. This prevents unnecessary service interruptions on idempotent
-  re-runs.
+  (`Reload kea-dhcp4-server`, etc.). Tasks must never use `state: restarted`
+  directly. The handlers themselves use `state: restarted` because the
+  `kea-dhcp*-server.service` units do not define `ExecReload`; this is still
+  correct because handlers only fire when config actually changed.
 
 * **TSIG keys are generated on the control node and pushed.** The
   `key_management.yml` task file owns all key lifecycle. Never generate
@@ -254,6 +368,19 @@ molecule verify
 * **Subnet ID uniqueness** — `id:` values in `kea_dhcp4_subnets` must be
   unique and stable. Changing an ID is not idempotent from Kea's
   perspective.
+* **AppArmor profiles hardcode control socket names.** The Ubuntu 3.0.3
+  package ships AppArmor profiles that allow only specific socket names in
+  `/run/kea/`. The role uses the exact names the profiles expect:
+  `kea4-ctrl-socket`, `kea6-ctrl-socket`, and `kea-ddns-ctrl-socket`.
+  Do not rename these. Any change will result in AppArmor denying the
+  `.lock` file creation and the service will fail to start.
+* **`kea-dhcp-ddns` log file permissions — Ubuntu LP: #2121327.** The shipped
+  AppArmor profile for `kea-dhcp-ddns` in Ubuntu 3.0.3-1 is missing `rw`
+  for `/var/log/kea/kea-dhcp-ddns.log` and `rwk` for its `.lock` file. The
+  role works around this by writing a local override to
+  `/etc/apparmor.d/local/usr.sbin.kea-dhcp-ddns` and reloading the profile
+  via `apparmor_parser -r`. Do not patch the package-owned profile directly.
+  Remove the local override file once the upstream package is fixed.
 
 ---
 
@@ -437,7 +564,8 @@ A change is breaking when it:
 * Renames a public handler (breaks notify chains in consumer playbooks)
 * Changes a Jinja2 template in a way that alters the rendered config
   structure and requires manual Kea state migration
-* Drops Ubuntu Resolute from the supported platform list in `meta/main.yml`
+* Drops Ubuntu Resolute support (the `tasks/pre-flight.yml` platform
+  assertion or the statement in `meta/main.yml`'s `description:`)
 * Bumps the minimum Ansible version in `meta/main.yml`
 * Changes file paths under `kea_base_dir` that consumers reference
   directly
@@ -520,9 +648,10 @@ load-bearing — they reflect deliberate choices, not defaults.
 
 ---
 
-*Last updated by Claude on 2026-05-02*
+*Last updated by Claude on 2026-05-08*
 
 [kea-docs]: https://kea.readthedocs.io/en/latest/arm/intro.html
 [kea-allkeys]: https://github.com/isc-projects/kea/blob/master/doc/examples/kea4/all-keys.json
 [upstream-basic]: https://github.com/basictheprogram/ansible-role-kea-dhcp-docker
 [upstream-jonas]: https://github.com/JonasAlfredsson/ansible-role-kea_dhcp
+[karpathy-claude]: https://github.com/forrestchang/andrej-karpathy-skills/blob/main/CLAUDE.md

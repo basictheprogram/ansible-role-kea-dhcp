@@ -7,19 +7,19 @@
 {% if kea_dhcp4_enabled %}
             "dhcp4": {
                 "socket-type": "unix",
-                "socket-name": "/kea/sockets/dhcp4.socket"
+                "socket-name": "kea4-ctrl-socket"
             }{% if kea_dhcp6_enabled or kea_ddns_enabled %},{% endif %}{{''}}
 {% endif %}
 {% if kea_dhcp6_enabled %}
             "dhcp6": {
                 "socket-type": "unix",
-                "socket-name": "/kea/sockets/dhcp6.socket"
+                "socket-name": "kea6-ctrl-socket"
             }{% if kea_ddns_enabled %},{% endif %}{{''}}
 {% endif %}
 {% if kea_ddns_enabled %}
             "d2": {
                 "socket-type": "unix",
-                "socket-name": "/kea/sockets/ddns.socket"
+                "socket-name": "kea-ddns-ctrl-socket"
             }
 {% endif %}
         },

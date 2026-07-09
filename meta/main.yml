@@ -9,13 +9,15 @@ galaxy_info:
   description: "Install and configure ISC Kea v3 DHCP natively via apt packages on Ubuntu Resolute (26.04 LTS)."
   license: "GPL-3.0-or-later"
   min_ansible_version: "2.20"
-  platforms:
-    - name: Ubuntu
-      versions:
-        - resolute # 26.04
+  issue_tracker_url: "https://github.com/basictheprogram/ansible-role-kea-dhcp/issues"
   galaxy_tags:
     - kea
     - dhcp
     - isc
     - network
     - ubuntu
+    - resolute
+    - dhcp4
+    - dhcp6
+    - ddns
+    - tsig

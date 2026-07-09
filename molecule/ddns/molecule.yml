@@ -9,9 +9,7 @@ driver:
   name: docker
 
 platforms:
-  - name: kea-dhcp-ubuntu2604
-    # geerlingguy images ship with Python, systemd, and an Ansible-ready
-    # environment. privileged + cgroup mount are required for systemd init.
+  - name: kea-ddns-ubuntu2604
     image: geerlingguy/docker-ubuntu2604-ansible:latest
     cgroupns_mode: host
     command: /usr/sbin/init
@@ -23,14 +21,8 @@ platforms:
 provisioner:
   name: ansible
   env:
-    # Allow molecule to find this role by its directory name when the
-    # repo is cloned alongside other roles.
     ANSIBLE_ROLES_PATH: "${MOLECULE_PROJECT_DIRECTORY}/.."
-    # molecule-plugins destroy.yml uses a string-truthy when: condition
-    # that became a hard error in ansible-core 2.20. Allow it until
-    # molecule-plugins ships a fix.
     ANSIBLE_ALLOW_BROKEN_CONDITIONALS: "1"
-    # Suppress deprecation noise from molecule-plugins' own playbooks.
     ANSIBLE_DEPRECATION_WARNINGS: "0"
   playbooks:
     prepare: prepare.yml
@@ -38,7 +30,7 @@ provisioner:
     cleanup: cleanup.yml
 
 scenario:
-  name: default
+  name: ddns
 
 verifier:
   name: testinfra

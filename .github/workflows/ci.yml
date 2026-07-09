@@ -1,0 +1,89 @@
+---
+name: CI
+
+"on":
+  push:
+    branches: ["**"]
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install pre-commit dependencies
+        run: pip install pre-commit ansible-lint
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: pre-commit-
+
+      - name: Run pre-commit
+        run: pre-commit run --all-files
+
+  molecule:
+    name: Molecule
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install Ansible and molecule
+        run: |
+          pip install \
+            "ansible-core>=2.20,<2.21" \
+            molecule \
+            "molecule-plugins[docker]" \
+            pytest-testinfra \
+            PyYAML
+
+      - name: Create role symlink for Ansible
+        run: |
+          mkdir -p "$HOME/.ansible/roles"
+          ln -sf "$GITHUB_WORKSPACE" "$HOME/.ansible/roles/realtime.kea_dhcp"
+
+      - name: Run molecule test
+        run: molecule test
+        env:
+          PY_COLORS: "1"
+          ANSIBLE_FORCE_COLOR: "1"
+          ANSIBLE_DEPRECATION_WARNINGS: "0"
+
+  galaxy:
+    name: Galaxy import
+    runs-on: ubuntu-latest
+    needs: molecule
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Publish role to Ansible Galaxy
+        uses: hspaans/ansible-galaxy-action@v2.1.1
+        with:
+          api_key: ${{ secrets.GALAXY_API_KEY }}

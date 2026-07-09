@@ -1,0 +1,20 @@
+---
+# Ubuntu 26.04 ships kea-dhcp4, kea-dhcp6, kea-ctrl-agent, and kea-dhcp-ddns
+# in the 'universe' component, which is not enabled by default in the
+# geerlingguy container image.  The replace task appends 'universe' to every
+# Components: line in the DEB822 sources file that does not already contain it.
+- name: Prepare
+  hosts: all
+  gather_facts: true
+  become: true
+  tasks:
+    - name: Prepare | enable universe component in apt sources
+      ansible.builtin.replace:
+        path: /etc/apt/sources.list.d/ubuntu.sources
+        regexp: '^(Components:(?:(?!\buniverse\b).)*$)'
+        replace: '\1 universe'
+
+    - name: Prepare | refresh apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 0

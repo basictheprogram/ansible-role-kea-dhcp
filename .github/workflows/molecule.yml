@@ -20,8 +20,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - distro: resolute
-            image: ubuntu:26.04
+          - distro: ubuntu2604
+            image: geerlingguy/docker-ubuntu2604-ansible:latest
 
     steps:
       - name: Checkout the repository
@@ -33,10 +33,16 @@ jobs:
           python-version: "3.x"
 
       - name: Install Molecule and dependencies
-        run: pip install ansible-core molecule molecule-plugins[docker]
+        run: |
+          pip install \
+            ansible-core \
+            molecule \
+            molecule-plugins[docker] \
+            pytest-testinfra \
+            PyYAML
 
-      - name: Run Molecule tests
-        run: molecule test
+      - name: Run Molecule tests (all scenarios)
+        run: molecule test --all
         env:
           MOLECULE_DISTRO: ${{ matrix.distro }}
           MOLECULE_IMAGE: ${{ matrix.image }}

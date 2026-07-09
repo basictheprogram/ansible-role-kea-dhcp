@@ -1,18 +1,3 @@
-ansible-role-kea-dhcp
-Ansible role to install and configure ISC Kea v3 DHCP natively on Ubuntu Resolute (26.04 LTS).
-
-Copyright (C) 2026  Bob Tanner <tanner@real-time.com>
-
-Based on ansible-role-kea_dhcp by Jonas Alfredsson
-  <https://github.com/JonasAlfredsson/ansible-role-kea_dhcp>
-
-This program is free software: you can redistribute it and/or modify it
-under the terms of the GNU General Public License as published by the Free
-Software Foundation, either version 3 of the License, or (at your option)
-any later version. See the full license text below.
-
---------------------------------------------------------------------------------
-
                     GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
 

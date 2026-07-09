@@ -1,14 +1,33 @@
 ---
-- name: "Reload Kea Control Agent"
-  community.docker.docker_container:
-    name: "{{ kea_ctrl_agent_container_name }}"
-    state: started
-    restart: true
-  when: kea_ctrl_agent_enabled
+# kea-dhcp4-server.service and kea-dhcp6-server.service do not define
+# ExecReload, so systemctl reload is not supported.  Restart is used
+# instead — handlers only fire when a config template actually changes,
+# so this is still idempotent from the play's perspective.
+- name: Reload kea-dhcp4-server
+  ansible.builtin.systemd:
+    name: kea-dhcp4-server
+    state: restarted
+  when: kea_dhcp4_enabled | bool and kea_service_manage | bool
 
-- name: Reload Kea DDNS Container
-  community.docker.docker_container:
-    name: "{{ kea_ddns_container_name }}"
-    state: started
-    restart: true
-  when: kea_ddns_enabled
+- name: Reload kea-dhcp6-server
+  ansible.builtin.systemd:
+    name: kea-dhcp6-server
+    state: restarted
+  when: kea_dhcp6_enabled | bool and kea_service_manage | bool
+
+- name: Reload kea-ctrl-agent
+  ansible.builtin.systemd:
+    name: kea-ctrl-agent
+    state: restarted
+  when: kea_ctrl_agent_enabled | bool and kea_service_manage | bool
+
+- name: Reload kea-dhcp-ddns-server
+  ansible.builtin.systemd:
+    name: kea-dhcp-ddns-server
+    state: restarted
+  when: kea_ddns_enabled | bool and kea_service_manage | bool
+
+- name: Reload kea-dhcp-ddns AppArmor profile
+  ansible.builtin.command:
+    cmd: apparmor_parser -r /etc/apparmor.d/usr.sbin.kea-dhcp-ddns
+  changed_when: true

@@ -1,0 +1,10 @@
+---
+# The Kea role installs native apt packages and systemd services entirely
+# within the molecule container. Molecule destroy removes the container,
+# so there are no host-side resources to clean up here.
+- name: Cleanup
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Cleanup | no host-side resources to remove
+      ansible.builtin.meta: noop

@@ -1,4 +1,10 @@
 ---
+# This scenario uses testinfra as the verifier (see molecule.yml).
+# Verification is performed by pytest in molecule/default/tests/test_default.py
+# and this playbook is not invoked during molecule verify.
+#
+# It is kept as a no-op so the file exists if the verifier is ever switched
+# back to ansible.
 - name: Verify
   hosts: all
   gather_facts: false

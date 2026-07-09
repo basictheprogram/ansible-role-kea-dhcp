@@ -1,0 +1,74 @@
+---
+# Converge for the ddns scenario.
+#
+# Exercises key_management.yml (copying BIND TSIG key files to kea_base_dir)
+# and the full DDNS deployment path (deploy_ddns.yml) including the
+# LP #2121327 AppArmor override.
+#
+# kea_dhcp4_enabled: true — required so that deploy_dhcp.yml runs and
+#   invokes key_management.yml (which fires when kea_ddns_enabled is true).
+#
+# The DNS server address (127.0.0.1:53) does not need a real resolver —
+# kea-dhcp-ddns only connects when it has an update to deliver, which does
+# not happen in a molecule test container with no DHCP clients.
+
+- name: Converge
+  hosts: all
+  gather_facts: true
+  become: true
+  pre_tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+        force_apt_get: true
+      changed_when: false
+      when: ansible_facts.os_family == 'Debian'
+    - name: Update dnf cache
+      ansible.builtin.dnf:
+        update_cache: true
+      changed_when: false
+      when: ansible_facts.os_family == 'RedHat'
+  vars:
+    kea_dhcp4_enabled: true
+    kea_dhcp6_enabled: false
+    kea_ctrl_agent_enabled: false
+    kea_ddns_enabled: true
+
+    # Minimal test subnet — RFC 5737 TEST-NET-1, documentation use only.
+    kea_dhcp4_subnets:
+      - id: 1
+        subnet: "192.0.2.0/24"
+        pools:
+          - pool: "192.0.2.100 - 192.0.2.200"
+        option-data:
+          - name: "routers"
+            data: "192.0.2.1"
+
+    # TSIG key — references the secret file that key_management.yml will
+    # extract from /etc/bind/d2.sha512.key and write to kea_base_dir.
+    kea_tsig_keys:
+      - name: "d2.sha512.key"
+        algorithm: "HMAC-SHA512"
+        secret-file: "/etc/kea/d2.sha512.key"
+
+    # Forward DDNS zone — key-name must match the entry in kea_tsig_keys.
+    kea_forward_ddns:
+      - comment: "Forward zone for molecule test"
+        name: "example.test."
+        key-name: "d2.sha512.key"
+        dns_servers:
+          - ip-address: "127.0.0.1"
+            port: 53
+
+    # Reverse DDNS zone — RFC 5737 TEST-NET-1 reverse zone.
+    kea_reverse_ddns:
+      - comment: "Reverse zone for molecule test"
+        name: "2.0.192.in-addr.arpa."
+        key-name: "d2.sha512.key"
+        dns_servers:
+          - ip-address: "127.0.0.1"
+            port: 53
+
+  roles:
+    - role: ansible-role-kea-dhcp
