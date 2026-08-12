@@ -239,6 +239,25 @@
     - kea_dhcp4_enabled | bool
     - kea_dhcp4_subnets | length > 1
 
+- name: Pre-flight | assert each subnet's reservation_files is a list of bare filenames
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - item.reservation_files is sequence
+      - item.reservation_files is not string
+      - item.reservation_files | select('search', '/') | list | length == 0
+    fail_msg: >-
+      reservation_files must be a list of bare filenames (no '/') resolved
+      under kea_reservations_dir.
+      Offending subnet: {{ item.id | default('(unnamed)') }},
+      reservation_files: {{ item.reservation_files }}.
+  loop: "{{ kea_dhcp4_subnets }}"
+  loop_control:
+    label: "{{ item.id | default('(unnamed)') }}"
+  when:
+    - kea_dhcp4_enabled | bool
+    - item.reservation_files is defined
+
 # ---------------------------------------------------------------------------
 # Subnets — DHCPv6
 # ---------------------------------------------------------------------------

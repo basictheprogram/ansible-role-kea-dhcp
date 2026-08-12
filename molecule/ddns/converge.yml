@@ -71,4 +71,4 @@
             port: 53
 
   roles:
-    - role: ansible-role-kea-dhcp
+    - role: ansible-role-kea_dhcp

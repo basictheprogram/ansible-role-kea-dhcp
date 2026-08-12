@@ -58,7 +58,7 @@
         "{{ key }}": {{ value | to_nice_json(indent=4, ensure_ascii=False) | indent(8, False) }},
 
 {% endfor %}
-        "subnet4": {{ kea_dhcp4_subnets | to_nice_json(indent=4, ensure_ascii=False) | indent(8, False) }},
+        "subnet4": {{ _kea_dhcp4_subnets | to_nice_json(indent=4, ensure_ascii=False) | indent(8, False) }},
 
         "loggers": {{ kea_logging_raw_dhcp4 | to_nice_json(indent=4, ensure_ascii=False) | indent(8, False) }}
     }

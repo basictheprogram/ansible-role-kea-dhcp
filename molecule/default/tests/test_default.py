@@ -55,6 +55,24 @@ TEST_POOL_START: str = "192.0.2.100"
 TEST_POOL_END: str = "192.0.2.200"
 TEST_SUBNET_ID: int = 1
 
+# External reservation files — merge_reservations.yml (see
+# molecule/default/prepare.yml and converge.yml's kea_dhcp4_subnets fixture).
+RESERVATIONS_DIR: str = "/etc/kea/reservations"
+RESERVATIONS_PRESEEDED_FILE: str = f"{RESERVATIONS_DIR}/printers.json"
+RESERVATIONS_PLACEHOLDER_FILE: str = f"{RESERVATIONS_DIR}/generic-hosts.json"
+EXPECTED_EXTERNAL_RESERVATIONS: JsonList = [
+    {
+        "hostname": "printer-002",
+        "hw-address": "14:58:d0:40:f1:28",
+        "ip-address": "192.0.2.12",
+    },
+    {
+        "hostname": "printer-003",
+        "hw-address": "f0:4e:a4:07:6b:74",
+        "ip-address": "192.0.2.13",
+    },
+]
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -428,6 +446,70 @@ def test_config_subnet4_pool_range(host: Host) -> None:
         f"Expected pool {expected_pool!r} not found in rendered pools: "
         f"{all_pools!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Config content — external reservation files (merge_reservations.yml)
+# ---------------------------------------------------------------------------
+
+
+def test_reservations_dir_exists(host: Host) -> None:
+    d = host.file(RESERVATIONS_DIR)
+    assert d.exists, f"{RESERVATIONS_DIR} does not exist"
+    assert d.is_directory, f"{RESERVATIONS_DIR} is not a directory"
+
+
+def test_reservations_dir_owner_and_mode(host: Host) -> None:
+    d = host.file(RESERVATIONS_DIR)
+    assert d.user == "_kea", f"{RESERVATIONS_DIR} owner is {d.user!r}, expected '_kea'"
+    assert d.group == "_kea", f"{RESERVATIONS_DIR} group is {d.group!r}, expected '_kea'"
+    assert d.mode == 0o750, f"{RESERVATIONS_DIR} mode is {oct(d.mode)}, expected 0o750"
+
+
+def test_preseeded_reservation_file_ownership_reconciled(host: Host) -> None:
+    """prepare.yml seeds printers.json before _kea exists; the role must
+    still reconcile ownership to _kea:_kea without touching its content."""
+    f = host.file(RESERVATIONS_PRESEEDED_FILE)
+    assert f.exists
+    assert f.user == "_kea"
+    assert f.group == "_kea"
+    assert f.mode == 0o640
+
+
+def test_preseeded_reservation_file_content_untouched(host: Host) -> None:
+    """force: false must not overwrite content already deployed on disk."""
+    content = json.loads(host.file(RESERVATIONS_PRESEEDED_FILE).content_string)
+    assert content == EXPECTED_EXTERNAL_RESERVATIONS
+
+
+def test_missing_reservation_file_gets_placeholder(host: Host) -> None:
+    """generic-hosts.json is listed but never pre-seeded — the role must
+    create an empty, valid placeholder rather than failing config render."""
+    f = host.file(RESERVATIONS_PLACEHOLDER_FILE)
+    assert f.exists
+    assert f.user == "_kea"
+    assert f.group == "_kea"
+    assert f.mode == 0o640
+    assert json.loads(f.content_string) == []
+
+
+def test_config_subnet4_reservations_merged_from_external_files(host: Host) -> None:
+    """subnet4[0].reservations must contain exactly the entries contributed
+    by printers.json; generic-hosts.json contributes nothing (empty placeholder)."""
+    dhcp4 = get_dhcp4(host)
+    subnet = next(s for s in dhcp4["subnet4"] if s["id"] == TEST_SUBNET_ID)
+    assert subnet.get("reservations") == EXPECTED_EXTERNAL_RESERVATIONS
+
+
+def test_config_subnet4_has_no_reservation_files_key(host: Host) -> None:
+    """reservation_files is an Ansible role directive, not a Kea subnet4
+    parameter — it must never leak into the rendered config."""
+    dhcp4 = get_dhcp4(host)
+    for subnet in dhcp4["subnet4"]:
+        assert "reservation_files" not in subnet, (
+            f"Subnet {subnet.get('subnet')!r} leaked a reservation_files key "
+            "into the rendered Kea config"
+        )
 
 
 # ---------------------------------------------------------------------------

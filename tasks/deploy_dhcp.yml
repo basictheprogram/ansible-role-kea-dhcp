@@ -17,6 +17,13 @@
     mode: "0640"
   notify: "Reload kea-dhcp{{ dhcp_ip_version }}-server"
 
+- name: "Validate rendered configuration for kea-dhcp{{ dhcp_ip_version }}"
+  ansible.builtin.command:
+    cmd: "kea-dhcp{{ dhcp_ip_version }} -t {{ kea_base_dir }}/kea-dhcp{{ dhcp_ip_version }}.conf"
+  register: _kea_dhcp_validate_result
+  changed_when: false
+  failed_when: _kea_dhcp_validate_result.rc != 0
+
 - name: "Manage kea-dhcp server service state for DHCP version {{ dhcp_ip_version }}"
   ansible.builtin.systemd:
     name: "kea-dhcp{{ dhcp_ip_version }}-server"

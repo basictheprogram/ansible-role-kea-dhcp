@@ -41,6 +41,11 @@ mock_roles:
   # molecule/default/prepare.yml dependency — install via:
   #   ansible-galaxy role install -r molecule/default/requirements.yml
   - jborean93.win_openssh
+  # Self-reference from molecule/*/converge.yml. Molecule resolves this via
+  # ANSIBLE_ROLES_PATH set in each scenario's molecule.yml provisioner env
+  # (pointing at the role's parent directory), but ansible-lint's
+  # syntax-check runs outside that environment and can't see it.
+  - ansible-role-kea_dhcp
 
 mock_modules:
   - community.docker.docker_compose_v2

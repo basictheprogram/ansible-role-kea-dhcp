@@ -80,6 +80,22 @@ kea_dhcp4_subnets: []
 kea_dhcp6_subnets: []
 
 #
+# External reservation files
+#
+# kea_reservations_dir — directory scanned for externally-managed
+# reservation JSON files referenced by a kea_dhcp4_subnets entry's
+# reservation_files list (e.g. deployed by
+# ansible-role-netbox_printer_reservations).  Matches that role's
+# kea_reservations_dir default so the two roles interoperate without
+# extra host_vars overrides.  Each listed file must be a standalone JSON
+# array of reservation objects; entries are merged into that subnet's
+# reservations array and fully inlined into kea-dhcp4.conf — no Kea
+# <?include?> directive is used, so the rendered config stays a single,
+# standard JSON document.
+#
+kea_reservations_dir: "/etc/kea/reservations"
+
+#
 # Control Agent
 #
 kea_ctrl_agent_host: "0.0.0.0"

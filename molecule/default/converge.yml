@@ -23,6 +23,10 @@
     kea_ddns_enabled: false
 
     # Minimal test subnet — RFC 5737 TEST-NET-1, documentation use only.
+    #
+    # reservation_files exercises merge_reservations.yml:
+    #   * printers.json is pre-seeded by prepare.yml — real merge path.
+    #   * generic-hosts.json does not exist yet — placeholder-creation path.
     kea_dhcp4_subnets:
       - id: 1
         subnet: "192.0.2.0/24"
@@ -31,6 +35,9 @@
         option-data:
           - name: "routers"
             data: "192.0.2.1"
+        reservation_files:
+          - printers.json
+          - generic-hosts.json
 
   roles:
-    - role: ansible-role-kea-dhcp
+    - role: ansible-role-kea_dhcp

@@ -170,6 +170,7 @@ ansible-role-kea-dhcp/
     deploy_dhcp.yml      # DHCPv4 and DHCPv6 install, config, and service tasks
     deploy_ddns.yml      # DDNS install, config, and service tasks
     key_management.yml   # TSIG key generation and distribution
+    merge_reservations.yml  # Merges external reservation files into DHCPv4 subnets
   defaults/main.yml      # All role variables with defaults — public interface
   handlers/main.yml      # Service reload and restart handlers
   templates/
@@ -295,6 +296,7 @@ canonical reference. The most consumer-visible ones are:
 | `kea_ctrl_agent_host` | `"0.0.0.0"` | Control agent bind address |
 | `kea_ctrl_agent_port` | `8000` | Control agent bind port |
 | `kea_logging_severity` | `"INFO"` | Log level for all services |
+| `kea_reservations_dir` | `"/etc/kea/reservations"` | Directory scanned for a subnet's `reservation_files` |
 
 ### `kea_dhcp4_subnets` entry format
 
@@ -307,6 +309,15 @@ kea_dhcp4_subnets:
     reservations:
       - hw-address: "aa:bb:cc:dd:ee:ff"
         ip-address: "192.168.1.10"
+    # Optional — filenames (bare, no '/') resolved under kea_reservations_dir.
+    # Each file must be a standalone JSON array of reservation objects
+    # (e.g. deployed by ansible-role-netbox_printer_reservations). Entries
+    # are appended to reservations: above and fully inlined into
+    # kea-dhcp4.conf by merge_reservations.yml — no Kea <?include?>
+    # directive is used. A missing file is created as an empty placeholder
+    # (`[]`) rather than failing the run.
+    reservation_files:
+      - printers.json
     option-data:
       - name: "routers"
         data: "192.168.1.1"
@@ -368,6 +379,28 @@ molecule verify
 * **Subnet ID uniqueness** — `id:` values in `kea_dhcp4_subnets` must be
   unique and stable. Changing an ID is not idempotent from Kea's
   perspective.
+* **`reservation_files` requires the writer role to run first.**
+  `merge_reservations.yml` slurps each listed file's *current* content on
+  this host at the moment this role's tasks run. If
+  `ansible-role-netbox_printer_reservations` (or any other writer) updates
+  a file *after* this role last rendered `kea-dhcp4.conf`, those changes
+  will not appear in the live config until this role's tasks run again.
+  Both roles must run in the same playbook, writer role first, for
+  reservation updates to actually take effect. A file listed in
+  `reservation_files` that does not yet exist on disk is created as an
+  empty `[]` placeholder rather than failing pre-flight — this keeps a
+  first-ever bootstrap run (before the writer role has ever deployed
+  anything) from failing.
+* **Kea's `<?include?>` directive is intentionally not used.** The
+  docker-era templates used `<?include "/kea/config/subnet4.json"?>`.
+  The native-apt templates (including `merge_reservations.yml`'s handling
+  of `reservation_files`) always fully inline content instead, so
+  `kea-dhcp4.conf` stays a single, standard JSON document parseable by
+  plain `json.load` — see
+  `molecule/default/tests/test_default.py::test_config_file_no_include_directives`.
+  This also avoids the `<?include?>` incompatibility with `config-write`-based
+  tooling (Stork, the `subnet_cmds` hook, or a manual `config-write` over
+  the control socket) documented in ISC's own Kea config-includes guide.
 * **AppArmor profiles hardcode control socket names.** The Ubuntu 3.0.3
   package ships AppArmor profiles that allow only specific socket names in
   `/run/kea/`. The role uses the exact names the profiles expect:

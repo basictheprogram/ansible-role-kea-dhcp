@@ -98,6 +98,10 @@ kea_dhcp4_subnets:
         ip-address: "192.168.1.10"
 ```
 
+Reservations can also be split into external files under
+`kea_reservations_dir` (default `/etc/kea/reservations`) — see
+[External reservation files](#external-reservation-files) below.
+
 ### Control Agent
 
 ```yaml
@@ -211,6 +215,7 @@ Pool sizes are derived from `ansible_facts['processor_vcpus']` at run time.
 |---|---|---|
 | `kea_dhcp4_subnets` | `[]` | DHCPv4 subnet list — **required** when `kea_dhcp4_enabled: true` |
 | `kea_dhcp6_subnets` | `[]` | DHCPv6 subnet list — **required** when `kea_dhcp6_enabled: true` |
+| `kea_reservations_dir` | `/etc/kea/reservations` | Directory scanned for a subnet's `reservation_files` |
 
 Each list entry maps directly to a Kea `subnet4` or `subnet6` object. The
 `id` field must be unique and stable. Example:
@@ -231,6 +236,41 @@ kea_dhcp4_subnets:
 
 See the [Kea all-keys example][kea-allkeys] for the full range of subnet
 options.
+
+### External reservation files
+
+| Variable | Default | Description |
+|---|---|---|
+| `kea_reservations_dir` | `/etc/kea/reservations` | Directory scanned for a subnet's `reservation_files` |
+
+Each `kea_dhcp4_subnets` entry may optionally list `reservation_files` —
+bare filenames (no `/`) resolved under `kea_reservations_dir`. Each file
+must be a standalone JSON array of reservation objects, for example one
+deployed by a separate role like
+[`ansible-role-netbox_printer_reservations`](../ansible-role-netbox_printer_reservations).
+Entries from every listed file are appended to that subnet's inline
+`reservations:` list and fully inlined into `kea-dhcp4.conf` — this role
+does not use Kea's `<?include?>` directive, so the rendered config always
+stays a single, standard JSON document.
+
+```yaml
+kea_dhcp4_subnets:
+  - id: 1
+    subnet: "192.168.1.0/24"
+    pools:
+      - pool: "192.168.1.100 - 192.168.1.200"
+    reservation_files:
+      - printers.json
+```
+
+A listed file that does not yet exist on disk is created as an empty `[]`
+placeholder rather than failing the run — useful the first time this role
+runs before a writer role like `ansible-role-netbox_printer_reservations`
+has ever deployed anything. Because the file is read at the moment this
+role's tasks execute, the writer role must run earlier in the same
+playbook for its updates to reach the live config — see that role's own
+`kea-dhcp4` reload handler, which does not by itself cause this role to
+re-render `kea-dhcp4.conf`.
 
 ### Control Agent
 

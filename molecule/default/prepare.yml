@@ -18,3 +18,33 @@
       ansible.builtin.apt:
         update_cache: true
         cache_valid_time: 0
+
+    # Simulates ansible-role-netbox_printer_reservations having already
+    # deployed a reservations file before this role's own converge runs.
+    # Left owner/group at the become-user default (root) here deliberately —
+    # the _kea system user does not exist until kea-common installs during
+    # converge, at which point merge_reservations.yml must reconcile
+    # ownership to _kea:_kea itself.
+    - name: Prepare | seed a pre-existing external reservations file
+      ansible.builtin.file:
+        path: /etc/kea/reservations
+        state: directory
+        mode: "0750"
+
+    - name: Prepare | seed printers.json fixture content
+      ansible.builtin.copy:
+        dest: /etc/kea/reservations/printers.json
+        mode: "0640"
+        content: |
+          [
+            {
+              "hostname": "printer-002",
+              "hw-address": "14:58:d0:40:f1:28",
+              "ip-address": "192.0.2.12"
+            },
+            {
+              "hostname": "printer-003",
+              "hw-address": "f0:4e:a4:07:6b:74",
+              "ip-address": "192.0.2.13"
+            }
+          ]

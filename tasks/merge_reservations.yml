@@ -1,0 +1,90 @@
+---
+# tasks/merge_reservations.yml
+#
+# Merges externally-managed reservation files (e.g. deployed by
+# ansible-role-netbox_printer_reservations into kea_reservations_dir) into
+# kea_dhcp4_subnets before dhcp4.json.j2 renders.  Each file listed in a
+# subnet's reservation_files is slurped from this host, parsed as JSON, and
+# appended to that subnet's reservations array.  The result is fully
+# inlined into kea-dhcp4.conf — no Kea <?include?> directive is used, so
+# the rendered config stays a single, standard JSON document (see
+# molecule/default/tests/test_default.py::test_config_file_no_include_directives).
+#
+# Included from tasks/main.yml only when kea_dhcp4_enabled, before
+# "Deploy DHCPv4 service".
+
+- name: "Reservations | Collect distinct external reservation filenames"
+  ansible.builtin.set_fact:
+    _kea_reservation_filenames: >-
+      {{ kea_dhcp4_subnets
+         | selectattr('reservation_files', 'defined')
+         | map(attribute='reservation_files')
+         | sum(start=[])
+         | unique }}
+
+- name: "Reservations | Ensure external reservations directory exists"
+  ansible.builtin.file:
+    path: "{{ kea_reservations_dir }}"
+    state: directory
+    owner: _kea
+    group: _kea
+    mode: "0750"
+  when: _kea_reservation_filenames | length > 0
+
+- name: "Reservations | Ensure listed reservation files exist (placeholder if missing)"
+  ansible.builtin.copy:
+    dest: "{{ kea_reservations_dir }}/{{ item }}"
+    content: "[]"
+    owner: _kea
+    group: _kea
+    mode: "0640"
+    force: false
+  loop: "{{ _kea_reservation_filenames }}"
+
+- name: "Reservations | Slurp external reservation files"
+  ansible.builtin.slurp:
+    src: "{{ kea_reservations_dir }}/{{ item }}"
+  loop: "{{ _kea_reservation_filenames }}"
+  register: _kea_reservation_slurp
+
+- name: "Reservations | Initialize decoded reservation content map"
+  ansible.builtin.set_fact:
+    _kea_reservation_contents: {}
+
+- name: "Reservations | Index decoded reservation file contents by filename"
+  ansible.builtin.set_fact:
+    _kea_reservation_contents: >-
+      {{ _kea_reservation_contents | combine(
+           {item.item: (item.content | b64decode | from_json)}
+         ) }}
+  loop: "{{ _kea_reservation_slurp.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: "Reservations | Initialize merged subnet4 list"
+  ansible.builtin.set_fact:
+    _kea_dhcp4_subnets: []
+
+- name: "Reservations | Merge external reservation file contents into each subnet"
+  ansible.builtin.set_fact:
+    _kea_dhcp4_subnets: >-
+      {{ _kea_dhcp4_subnets + [
+           (subnet | dict2items
+             | rejectattr('key', 'equalto', 'reservation_files')
+             | list | items2dict)
+           | combine({
+               'reservations': (subnet.reservations | default([])) + (
+                 (subnet.reservation_files | default([]))
+                 | map('extract', _kea_reservation_contents)
+                 | sum(start=[])
+               )
+             })
+         ]
+      }}
+  loop: "{{ kea_dhcp4_subnets }}"
+  loop_control:
+    loop_var: subnet
+    label: "{{ subnet.id | default('(unnamed)') }}"
+  # reservation_files is stripped from the rendered subnet object above —
+  # it is an Ansible role directive, not a Kea subnet4 parameter, and Kea
+  # would reject an unrecognized key in the rendered config.

@@ -33,6 +33,10 @@
     group: _kea
     mode: "0750"
 
+- name: Merge external reservation files into DHCPv4 subnets
+  ansible.builtin.include_tasks: merge_reservations.yml
+  when: kea_dhcp4_enabled | bool
+
 - name: Deploy DHCPv4 service
   ansible.builtin.include_tasks: deploy_dhcp.yml
   vars:
