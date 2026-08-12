@@ -305,10 +305,26 @@ Each `kea_forward_ddns` / `kea_reverse_ddns` entry:
 kea_forward_ddns:
   - comment: "Forward zone for example.com"
     name: "example.com."
+    key-name: "d2.sha512.key"
     dns_servers:
       - ip-address: "192.168.1.53"
         port: 53
 ```
+
+`key-name` is required on every `kea_forward_ddns` / `kea_reverse_ddns`
+entry and must match the `name` of an entry in the final `kea_tsig_keys`
+list. That list can come from `kea_tsig_keys` entries defined directly in
+`host_vars`, from keys auto-discovered on the BIND9 host at
+`kea_bind9_keys_path` (see `tasks/key_management.yml`), or both — either
+way, the final merged list isn't known until `key_management.yml` has run.
+Before rendering
+`kea-dhcp-ddns.conf`, `deploy_ddns.yml` asserts this for every zone and
+fails with a clear message naming the zone, the missing key, and the known
+key names if it doesn't hold. The rendered config is then checked with
+`kea-dhcp-ddns -t` — the same validation `deploy_dhcp.yml` already runs for
+`kea-dhcp4`/`kea-dhcp6` — before the service is (re)started, so a broken
+DDNS config fails the Ansible run instead of `kea-dhcp-ddns-server` failing
+to start on the host.
 
 ### Logging
 

@@ -1,4 +1,20 @@
 ---
+# Runs after key_management.yml (see tasks/main.yml), so kea_tsig_keys
+# reflects both manually-defined and auto-discovered keys by this point.
+- name: Assert every DDNS zone key-name exists in kea_tsig_keys
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - item['key-name'] in (kea_tsig_keys | map(attribute='name') | list)
+    fail_msg: >-
+      DDNS zone {{ item.name }} references key-name '{{ item['key-name'] }}',
+      which is not present in kea_tsig_keys (manually defined or
+      auto-discovered from kea_bind9_keys_path).
+      Known key names: {{ kea_tsig_keys | map(attribute='name') | list }}.
+  loop: "{{ kea_forward_ddns + kea_reverse_ddns }}"
+  loop_control:
+    label: "{{ item.name | default('(unnamed)') }}"
+
 - name: Install kea-dhcp-ddns-server package
   ansible.builtin.apt:
     name: kea-dhcp-ddns-server
@@ -30,6 +46,13 @@
     group: _kea
     mode: "0640"
   notify: Reload kea-dhcp-ddns-server
+
+- name: Validate rendered kea-dhcp-ddns configuration
+  ansible.builtin.command:
+    cmd: "kea-dhcp-ddns -t {{ kea_base_dir }}/kea-dhcp-ddns.conf"
+  register: _kea_ddns_validate_result
+  changed_when: false
+  failed_when: _kea_ddns_validate_result.rc != 0
 
 - name: Manage kea-dhcp-ddns-server service state
   ansible.builtin.systemd:
