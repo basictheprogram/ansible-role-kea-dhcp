@@ -69,12 +69,12 @@
   ansible.builtin.set_fact:
     _kea_dhcp4_subnets: >-
       {{ _kea_dhcp4_subnets + [
-           (subnet | dict2items
+           (kea_dhcp_subnet | dict2items
              | rejectattr('key', 'equalto', 'reservation_files')
              | list | items2dict)
            | combine({
-               'reservations': (subnet.reservations | default([])) + (
-                 (subnet.reservation_files | default([]))
+               'reservations': (kea_dhcp_subnet.reservations | default([])) + (
+                 (kea_dhcp_subnet.reservation_files | default([]))
                  | map('extract', _kea_reservation_contents)
                  | sum(start=[])
                )
@@ -83,8 +83,8 @@
       }}
   loop: "{{ kea_dhcp4_subnets }}"
   loop_control:
-    loop_var: subnet
-    label: "{{ subnet.id | default('(unnamed)') }}"
+    loop_var: kea_dhcp_subnet
+    label: "{{ kea_dhcp_subnet.id | default('(unnamed)') }}"
   # reservation_files is stripped from the rendered subnet object above —
   # it is an Ansible role directive, not a Kea subnet4 parameter, and Kea
   # would reject an unrecognized key in the rendered config.

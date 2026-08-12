@@ -1,135 +1,72 @@
-# TODO — ansible-sync-role session (2026-07-08)
+# TODO — ansible-sync-role session (2026-08-12)
 
-Items flagged during the sync but not resolved in this session.
+Items flagged during this sync but not resolved in this session. Carries
+forward unresolved items from the 2026-07-08 session's TODO.md; resolved
+items from that session have been dropped (see notes below).
 
-## 1. `.pre-commit-config.yaml` — write blocked, apply by hand
+## 1. `.github/workflows/molecule.yml` looks possibly redundant/dead
 
-Cowork blocked `Write`/`Edit` on this file with "resolves to a protected
-location" (known, reproducible issue — see the ansible-sync-role skill's
-`references/known-issues.md`, no workaround exists). The user chose
-"Overwrite" with the template version during Step 1. Apply this diff by hand
-(from repo root):
-
-```diff
---- .pre-commit-config.yaml (current)
-+++ .pre-commit-config.yaml (template — overwrite chosen)
-@@ -8,16 +8,12 @@
-       - id: trailing-whitespace
-       - id: end-of-file-fixer
-       - id: check-yaml
--        args: ["--unsafe"]
--      - id: check-merge-conflict
--      - id: mixed-line-ending
--        args: ["--fix=lf"]
-       - id: check-added-large-files
-         args: ["--maxkb=600"]
-       - id: detect-private-key
--      - id: check-symlinks
-+      - id: check-shebang-scripts-are-executable
-       - id: file-contents-sorter
--        files: \.gitignore$
-+        files: requirements.txt|\.gitignore|\.dockerignore
-
-   - repo: https://github.com/adrienverge/yamllint.git
-     rev: v1.38.0
-@@ -32,6 +28,28 @@
-     hooks:
-       - id: gitleaks
-
-+  - repo: https://github.com/astral-sh/ruff-pre-commit
-+    rev: v0.15.16
-+    hooks:
-+      - id: ruff
-+        name: Ruff check
-+        description: "Run 'ruff check' for extremely fast Python linting"
-+        args: [--fix]
-+
-+      - id: ruff-format
-+        name: Ruff format
-+        description: "Run 'ruff format' for extremely fast Python formatting"
-+
-+  - repo: https://github.com/hadolint/hadolint
-+    rev: v2.14.0
-+    hooks:
-+      - id: hadolint
-+        name: Lint Dockerfiles
-+        description: Runs hadolint to lint Dockerfiles
-+        language: system
-+        types: ["dockerfile"]
-+        entry: hadolint
-+
-   - repo: local
-     hooks:
-       - id: ansible-lint
-@@ -40,3 +58,25 @@
-         entry: ansible-lint
-         files: \.(yaml|yml)$
-         pass_filenames: false
-+
-+  - repo: https://github.com/jumanjihouse/pre-commit-hooks
-+    rev: 3.0.0
-+    hooks:
-+      # - id: bundler-audit
-+      # - id: check-mailmap
-+      # - id: fasterer
-+      # - id: forbid-binary
-+      # - id: forbid-space-in-indent
-+      # - id: git-check  # Configure in .gitattributes
-+      # - id: git-dirty  # Configure in .gitignore
-+      # - id: markdownlint # Configure in .mdlrc
-+      # - id: reek
-+      # - id: require-ascii
-+      # - id: rubocop
-+      # - id: script-must-have-extension
-+      # - id: script-must-not-have-extension
-+      - id: shellcheck
-+      - id: shfmt
-+
-+ci:
-+  autoupdate_schedule: weekly
-```
-
-Note: the template's `hadolint` hook lints Dockerfiles, and this role has
-none — it'll simply never match any files. Harmless, but worth knowing it's
-inert here.
-
-## 2. `.ansible-lint` — unused mock_roles/mock_modules
-
-Per the user's explicit "Overwrite" choice in Step 1, `.ansible-lint` now
-carries the template's `mock_roles: [jborean93.win_openssh]` and
-`mock_modules:` list (Docker/Windows/Chocolatey modules). This role uses
-none of them — they're inert, not harmful, but a future cleanup pass could
-trim them to just what this role actually needs.
-
-## 3. `.github/workflows/molecule.yml` looks possibly redundant/dead
-
-`.github/workflows/ci.yml` already has its own `molecule` job (runs
-`molecule test`, no matrix). `.github/workflows/molecule.yml` is a second,
-separate workflow that runs `molecule test --all` on push/PR to
-main/master, using a `matrix.distro`/`matrix.image` strategy that sets
+Carried forward, unchanged, from the 2026-07-08 session — not investigated
+this session either. `.github/workflows/ci.yml` already has its own
+`molecule` job (runs `molecule test`, no matrix). `.github/workflows/molecule.yml`
+is a second, separate workflow that runs `molecule test --all` on push/PR
+to main/master, using a `matrix.distro`/`matrix.image` strategy that sets
 `MOLECULE_DISTRO`/`MOLECULE_IMAGE` env vars — but neither
-`molecule/default/molecule.yml` nor `molecule/ddns/molecule.yml` actually
-reads those env vars (both hardcode
-`geerlingguy/docker-ubuntu2604-ansible:latest` directly). This means the
-matrix strategy is currently a no-op — it always runs the same fixed image
-regardless of what the matrix would set. Investigate whether
-`molecule.yml` should be removed (duplicate of `ci.yml`'s job) or fixed to
-actually parameterize the scenario platforms. Out of scope for this sync
-(Procedure B only covers legacy CI systems, not auditing GitHub Actions
-logic) — not touched.
+`molecule/default/molecule.yml` nor `molecule/ddns/molecule.yml` reads
+those env vars (both hardcode `geerlingguy/docker-ubuntu2604-ansible:latest`
+directly, correctly, since this role only ever targets one platform). This
+means the matrix strategy is currently a no-op. Investigate whether
+`molecule.yml` should be removed (duplicate of `ci.yml`'s job) or deleted
+outright, now that Steps 9/10 have confirmed the single-platform molecule
+scenarios are otherwise fully compliant. Out of scope for this skill
+(Procedure B only covers legacy, non-GitHub-Actions CI systems).
 
-## 4. CLAUDE.md's role file structure listing omits `tasks/pre-flight.yml`
+## 2. CLAUDE.md's role file structure listing omits `tasks/merge_reservations.yml`
 
-Pre-existing gap, not introduced by this session — the `tasks/` block in
-CLAUDE.md's "Role File Structure" section lists `main.yml`, `deploy_dhcp.yml`,
-`deploy_ddns.yml`, `key_management.yml` but not `pre-flight.yml` (which does
-exist and is wired in as the first task in `tasks/main.yml`). Left as-is per
-"surgical changes, mention don't silently fix" — flagging here since this
-document is otherwise being kept as the source of truth.
+Pre-existing-style gap, same class as the 2026-07-08 session's item #4
+(which was about `pre-flight.yml` and has since been fixed in CLAUDE.md).
+CLAUDE.md's "Role File Structure" tree already lists `merge_reservations.yml`
+correctly (added in the ansible-commit session earlier today), so this is
+just a note that the structure section should be spot-checked again next
+time a task file is added or removed — not an active gap right now.
 
-## 5. `meta/argument_specs.yml` — skipped by user decision
+## 3. `meta/argument_specs.yml` — still skipped, still not required
 
-No `meta/argument_specs.yml` exists. User chose "Skip" — not required by any
-enabled `.ansible-lint` rule, and README's Variables Reference already
-documents all ~40 `defaults/main.yml` keys. Revisit if `argument_specs`
-schema validation becomes a project requirement later.
+Re-confirmed this session (Step 4 audit): no `.ansible-lint` rule currently
+enabled requires it, and README's Variables Reference documents all
+`defaults/main.yml` keys by hand. Same standing decision as the
+2026-07-08 session's item #5. Revisit only if `argument_specs` schema
+validation becomes a project requirement.
+
+## 4. CLAUDE.md kept as-is over the generic template (Step 2)
+
+The existing `CLAUDE.md` is a hand-written project brief (Scope
+Constraints, Settled Decisions, full Variables Reference, a custom commit
+message guide) that's substantially richer than what `_template/CLAUDE.md`
+would generate — several of the template's placeholder sections would
+have become bare `TODO` stubs since no `DESIGN.md` exists in this role.
+User chose **Keep**. No diff was applied. Not a gap, just documenting the
+decision per Procedure D.
+
+## Steps 3–13 audit — one fix applied, everything else already compliant
+
+* **Step 3 (fixed):** `tasks/merge_reservations.yml`'s `loop_var: subnet`
+  violated `.ansible-lint`'s `loop_var_prefix: "{role_name}_"` rule.
+  Renamed to `kea_dhcp_subnet` throughout the task and its
+  `loop_control.label`.
+* **Step 5 (meta/main.yml), Step 5b (LICENSE), Step 6 (defaults/vars
+  split), Step 7 (preflight), Step 9 (molecule platform matrix/verifier),
+  Step 10 (converge.yml pre_tasks), Step 13 (molecule/requirements.txt,
+  collection requirements.yml):** already fully compliant or explicitly
+  not applicable — this role's own CLAUDE.md locks in single-platform
+  (Ubuntu Resolute 26.04 only, no OS-family branching), GPL-3.0-or-later
+  (not MIT, so Step 5b's copyright-stacking doesn't apply), a single
+  `defaults/main.yml` with no `vars/` split by design, and
+  `ansible.builtin`-only tasks (no `requirements.yml` needed). None of
+  these were changed, since changing them would contradict this role's
+  own settled decisions.
+* **Step 8 (README):** Requirements/Variables Reference sections already
+  current. The generic template's prescribed "Task Flow" section doesn't
+  exist in this README's actual structure and wasn't invented from
+  scratch, per the "surgical changes" principle — flagging here rather
+  than silently adding a new section.
