@@ -24,6 +24,14 @@
 # missing permissions for both the log file and its lock file.  Apply a
 # local override so the denials do not appear in dmesg.  This file is
 # included by the main profile and is preserved across package upgrades.
+# Only relevant on hosts that actually have AppArmor installed — some
+# minimal images don't ship apparmor_parser at all, in which case there is
+# no profile to override.
+- name: Check whether AppArmor is present
+  ansible.builtin.stat:
+    path: /usr/sbin/apparmor_parser
+  register: _kea_apparmor_parser
+
 - name: "Apply AppArmor local override for kea-dhcp-ddns log files (LP #2121327)"
   ansible.builtin.copy:
     dest: /etc/apparmor.d/local/usr.sbin.kea-dhcp-ddns
@@ -37,6 +45,7 @@
     group: root
     mode: "0644"
   notify: Reload kea-dhcp-ddns AppArmor profile
+  when: _kea_apparmor_parser.stat.exists
 
 - name: Render kea-dhcp-ddns configuration
   ansible.builtin.template:

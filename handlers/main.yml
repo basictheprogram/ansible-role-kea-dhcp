@@ -31,3 +31,4 @@
   ansible.builtin.command:
     cmd: apparmor_parser -r /etc/apparmor.d/usr.sbin.kea-dhcp-ddns
   changed_when: true
+  when: _kea_apparmor_parser.stat.exists | default(false)

@@ -376,6 +376,9 @@ apparmor="DENIED" operation="mknod" profile="kea-dhcp-ddns"
 
 This role works around the package bug by writing a local AppArmor override to
 `/etc/apparmor.d/local/usr.sbin.kea-dhcp-ddns` and reloading the profile.
+The override (and the reload) is skipped entirely on hosts without
+`apparmor_parser` (`/usr/sbin/apparmor_parser`) installed, since there is no
+AppArmor profile to override in that case.
 The override file survives package upgrades and will be left in place until
 explicitly removed. Once ISC or Ubuntu ships a corrected `isc-kea` package the
 override file can be deleted and the AppArmor profile reloaded — the role does
